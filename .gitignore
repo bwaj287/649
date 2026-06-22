@@ -1,0 +1,35 @@
+# Runtime logs
+launcher.log
+
+# Generated prediction/report outputs
+latest_weighted_predictions.csv
+latest_weighted_predictions.json
+latest_weighted_predictions.txt
+refresh_report.json
+
+# Older generated data snapshots kept locally
+lotto649_2016-06-19_to_2026-06-18.csv
+lotto649_2016-06-21_to_2026-06-20.csv
+lottomax_2016-06-19_to_2026-06-18.csv
+lottomax_2016-06-21_to_2026-06-20.csv
+
+# Backtest/generated result folders
+backtest_results/
+backtest_results_hl*/
+holdout_validation/
+smoke-test*/
+
+# Downloaded investigation/cache files from lottery websites
+clientlib-*.js
+*_past_results.html
+have_my_numbers_*.html
+playnow_*.html
+playnow_*.js
+wclc_*.html
+wclc_*.js
+
+# Local OS/editor noise
+.DS_Store
+Thumbs.db
+*.tmp
+*.log
