@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Lotto 微权重预测面板</title>
+  <title>Lotto Weighted Predictor</title>
   <style>
     :root {
       --ink: #16211d;
@@ -47,6 +47,39 @@
       width: min(1160px, calc(100% - 36px));
       margin: 0 auto;
       padding: 42px 0 54px;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 14px;
+    }
+
+    .language-toggle {
+      display: inline-flex;
+      gap: 6px;
+      padding: 6px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 248, 234, 0.72);
+      box-shadow: 0 10px 28px rgba(24, 38, 31, 0.12);
+      backdrop-filter: blur(18px);
+    }
+
+    .language-toggle button {
+      min-width: 82px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--muted);
+      box-shadow: none;
+      font-size: 13px;
+    }
+
+    .language-toggle button.active {
+      color: #fff;
+      background: linear-gradient(135deg, var(--green), var(--green-2));
+      box-shadow: 0 10px 22px rgba(15, 78, 57, 0.22);
     }
 
     .hero {
@@ -297,38 +330,150 @@
 </head>
 <body>
   <main class="shell">
+    <div class="topbar">
+      <div class="language-toggle" aria-label="Language">
+        <button id="langZh" type="button">ZH</button>
+        <button id="langEn" type="button">English</button>
+      </div>
+    </div>
+
     <section class="hero">
       <div class="panel intro">
         <span class="eyebrow">Local Lotto Lab</span>
-        <h1>近期权重预测面板</h1>
-        <p class="lead">刷新官方中奖数据、检查 CSV 完整性，并按“越近中奖号码权重越高”的模型生成下一期开奖参考号码。</p>
+        <h1 data-i18n="title">Recency Weighted Lotto Panel</h1>
+        <p class="lead" data-i18n="lead">Refresh official draw history, validate the local CSV files, and generate next-draw reference numbers.</p>
       </div>
 
       <aside class="panel actions">
         <div class="status-pill">
-          <span>当前状态</span>
-          <strong id="runState">读取中</strong>
+          <span data-i18n="currentStatus">Current status</span>
+          <strong id="runState">Loading</strong>
         </div>
         <div class="button-stack">
-          <button id="refreshBtn">刷新官方数据并预测</button>
-          <button id="localBtn" class="secondary">只用本地数据重新预测</button>
+          <button id="refreshBtn" data-i18n="refreshButton">Refresh official data and predict</button>
+          <button id="localBtn" class="secondary" data-i18n="localButton">Predict from local data only</button>
         </div>
-        <div class="meta" id="generatedAt">最近生成时间：读取中</div>
+        <div class="meta" id="generatedAt">Last generated: Loading</div>
       </aside>
     </section>
 
     <section class="grid" id="cards"></section>
 
     <section class="panel checks">
-      <h2>本次更新</h2>
+      <h2 data-i18n="updateTitle">This Update</h2>
       <div class="check-grid" id="updates"></div>
-      <h2 class="section-gap">数据完整性</h2>
+      <h2 class="section-gap" data-i18n="integrityTitle">Data Integrity</h2>
       <div class="check-grid" id="checks"></div>
-      <div class="log" id="log">准备好了。</div>
+      <div class="log" id="log">Ready.</div>
     </section>
   </main>
 
   <script>
+    function U(codes) {
+      return codes
+        .split(" ")
+        .filter(Boolean)
+        .map((code) => String.fromCodePoint(parseInt(code, 16)))
+        .join("");
+    }
+
+    const translations = {
+      zh: {
+        pageTitle: "Lotto " + U("5FAE 6743 91CD 9884 6D4B 9762 677F"),
+        title: U("8FD1 671F 6743 91CD 9884 6D4B 9762 677F"),
+        lead: U("5237 65B0 5B98 65B9 4E2D 5956 6570 636E 3001 68C0 67E5") + " CSV " + U("5B8C 6574 6027 FF0C 5E76 6309 7EC4 5408 6743 91CD 6A21 578B 751F 6210 4E0B 4E00 671F 5F00 5956 53C2 8003 53F7 7801 3002"),
+        currentStatus: U("5F53 524D 72B6 6001"),
+        refreshButton: U("5237 65B0 5B98 65B9 6570 636E 5E76 9884 6D4B"),
+        localButton: U("53EA 7528 672C 5730 6570 636E 91CD 65B0 9884 6D4B"),
+        updateTitle: U("672C 6B21 66F4 65B0"),
+        integrityTitle: U("6570 636E 5B8C 6574 6027"),
+        reading: U("8BFB 53D6 4E2D"),
+        idle: U("7A7A 95F2"),
+        running: U("8FD0 884C 4E2D"),
+        generatedAt: U("6700 8FD1 751F 6210 65F6 95F4"),
+        noGeneratedAt: U("8FD8 6CA1 6709 751F 6210 8BB0 5F55"),
+        noPredictions: U("8FD8 6CA1 6709 9884 6D4B 7ED3 679C 3002 8BF7 5148 91CD 65B0 9884 6D4B 3002"),
+        noUpdates: U("8FD8 6CA1 6709 66F4 65B0 8BB0 5F55 3002"),
+        noChecks: U("8FD8 6CA1 6709 5B8C 6574 6027 62A5 544A 3002"),
+        nextDraw: U("4E0B 4E00 671F 5F00 5956 4F30 8BA1"),
+        latestDrawNumber: U("6700 8FD1 6570 636E 671F 53F7"),
+        halfLife: U("534A 8870 671F"),
+        drawUnit: U("671F"),
+        model: U("6A21 578B"),
+        nonBirthdayCount: "32+ " + U("53F7 7801 6570"),
+        topCandidates: U("6743 91CD 6700 9AD8 5019 9009") + " Top 8",
+        status: U("72B6 6001"),
+        localMode: U("672C 5730 91CD 7B97 FF0C 672A 8054 7F51 4E0B 8F7D"),
+        addedDraws: U("65B0 589E") + " {count} " + U("671F"),
+        alreadyCurrent: U("65B0 589E") + " 0 " + U("671F FF0C 5DF2 662F 6700 65B0"),
+        rows: U("884C 6570"),
+        changed: U("53D8 5316"),
+        latestDraw: U("6700 65B0 671F"),
+        none: U("65E0"),
+        unknown: U("672A 77E5"),
+        expected: U("9884 8BA1"),
+        dates: U("65E5 671F"),
+        missingDates: U("7F3A 65E5 671F"),
+        duplicateDates: U("91CD 590D 65E5 671F"),
+        invalidMainNumbers: U("65E0 6548 4E3B 53F7"),
+        ready: U("51C6 5907 597D 4E86 3002"),
+        panelLoaded: U("9762 677F 5DF2 8BFB 53D6 6700 65B0 672C 5730 7ED3 679C 3002"),
+        actionStart: "{label}" + U("5F00 59CB 3002 8054 7F51 5237 65B0 53EF 80FD 9700 8981 4E00 70B9 65F6 95F4 3002"),
+        actionDone: "{label}" + U("5B8C 6210 3002"),
+        actionError: U("51FA 9519 FF1A") + "{message}",
+        loadFailed: U("8BFB 53D6 72B6 6001 5931 8D25 FF1A") + "{message}",
+        refreshLabel: U("5237 65B0 5B98 65B9 6570 636E 5E76 9884 6D4B"),
+        localLabel: U("672C 5730 91CD 65B0 9884 6D4B"),
+      },
+      en: {
+        pageTitle: "Lotto Weighted Predictor",
+        title: "Recency Weighted Lotto Panel",
+        lead: "Refresh official draw history, validate the local CSV files, and generate next-draw reference numbers with a composite weighting model.",
+        currentStatus: "Current status",
+        refreshButton: "Refresh official data and predict",
+        localButton: "Predict from local data only",
+        updateTitle: "This Update",
+        integrityTitle: "Data Integrity",
+        reading: "Loading",
+        idle: "Idle",
+        running: "Running",
+        generatedAt: "Last generated",
+        noGeneratedAt: "No generated record yet",
+        noPredictions: "No predictions yet. Use \"Predict from local data only\" to generate the first result.",
+        noUpdates: "No update record yet.",
+        noChecks: "No integrity report yet.",
+        nextDraw: "Estimated next draw",
+        latestDrawNumber: "Latest draw number",
+        halfLife: "Half-life",
+        drawUnit: "draws",
+        model: "Model",
+        nonBirthdayCount: "32+ count",
+        topCandidates: "Top 8 weighted candidates",
+        status: "Status",
+        localMode: "Local recalculation, no download",
+        addedDraws: "Added {count} draw(s)",
+        alreadyCurrent: "Added 0 draws, already current",
+        rows: "Rows",
+        changed: "change",
+        latestDraw: "Latest draw",
+        none: "none",
+        unknown: "unknown",
+        expected: "expected",
+        dates: "Dates",
+        missingDates: "missing dates",
+        duplicateDates: "duplicate dates",
+        invalidMainNumbers: "invalid main numbers",
+        ready: "Ready.",
+        panelLoaded: "Panel loaded the latest local results.",
+        actionStart: "{label} started. Online refresh may take a little while.",
+        actionDone: "{label} completed.",
+        actionError: "Error: {message}",
+        loadFailed: "Failed to load status: {message}",
+        refreshLabel: "Refresh official data and predict",
+        localLabel: "Local prediction",
+      },
+    };
+
     const cards = document.querySelector("#cards");
     const updates = document.querySelector("#updates");
     const checks = document.querySelector("#checks");
@@ -337,6 +482,20 @@
     const generatedAt = document.querySelector("#generatedAt");
     const refreshBtn = document.querySelector("#refreshBtn");
     const localBtn = document.querySelector("#localBtn");
+    const langZh = document.querySelector("#langZh");
+    const langEn = document.querySelector("#langEn");
+
+    let currentLanguage = localStorage.getItem("lotto-ui-language") || "zh";
+    let currentStatus = null;
+
+    function t(key, replacements = {}) {
+      const dictionary = translations[currentLanguage] || translations.zh;
+      let value = dictionary[key] || translations.en[key] || key;
+      for (const [name, replacement] of Object.entries(replacements)) {
+        value = value.replaceAll(`{${name}}`, replacement);
+      }
+      return value;
+    }
 
     function writeLog(message) {
       const time = new Date().toLocaleTimeString();
@@ -346,12 +505,12 @@
     function setBusy(isBusy) {
       refreshBtn.disabled = isBusy;
       localBtn.disabled = isBusy;
-      runState.textContent = isBusy ? "运行中" : "空闲";
+      runState.textContent = isBusy ? t("running") : t("idle");
     }
 
     function formatDateTime(value) {
-      if (!value) return "还没有生成记录";
-      return new Date(value).toLocaleString();
+      if (!value) return t("noGeneratedAt");
+      return new Date(value).toLocaleString(currentLanguage === "zh" ? "zh-CN" : "en-CA");
     }
 
     function splitPicks(picks) {
@@ -375,7 +534,7 @@
 
     function renderPredictions(predictions) {
       if (!predictions || predictions.length === 0) {
-        cards.innerHTML = `<div class="panel card empty">还没有预测结果。点“只用本地数据重新预测”可以先生成一次。</div>`;
+        cards.innerHTML = `<div class="panel card empty">${t("noPredictions")}</div>`;
         return;
       }
 
@@ -391,14 +550,14 @@
           <article class="panel card">
             <h2>${prediction.game}</h2>
             <div class="meta">
-              下一期开奖估计：${prediction.estimated_next_draw_date || "未知"}<br>
-              最近数据期号：${prediction.latest_draw_number || "未知"}，
-              半衰期：${prediction.half_life_draws} 期<br>
-              模型：${prediction.model || "未知"}，
-              32+ 号码数：${prediction.non_birthday_count ?? "未知"}
+              ${t("nextDraw")}: ${prediction.estimated_next_draw_date || t("unknown")}<br>
+              ${t("latestDrawNumber")}: ${prediction.latest_draw_number || t("unknown")},
+              ${t("halfLife")}: ${prediction.half_life_draws} ${t("drawUnit")}<br>
+              ${t("model")}: ${prediction.model || t("unknown")},
+              ${t("nonBirthdayCount")}: ${prediction.non_birthday_count ?? t("unknown")}
             </div>
             <div class="balls">${balls}</div>
-            <div class="meta">权重最高候选 Top 8</div>
+            <div class="meta">${t("topCandidates")}</div>
             <div class="top-list">${topList}</div>
           </article>
         `;
@@ -407,7 +566,7 @@
 
     function renderUpdates(reports) {
       if (!reports || reports.length === 0) {
-        updates.innerHTML = `<div class="check">还没有更新记录。</div>`;
+        updates.innerHTML = `<div class="check">${t("noUpdates")}</div>`;
         return;
       }
 
@@ -415,19 +574,19 @@
         const isNew = Number(report.newDrawsAfterPreviousLatest) > 0;
         const statusClass = isNew ? "ok" : "warn";
         const statusText = report.mode === "local_reprediction"
-          ? "本地重算，未联网下载"
+          ? t("localMode")
           : isNew
-            ? `新增 ${report.newDrawsAfterPreviousLatest} 期`
-            : "新增 0 期，已是最新";
+            ? t("addedDraws", { count: report.newDrawsAfterPreviousLatest })
+            : t("alreadyCurrent");
 
         return `
           <div class="check">
             <strong>${report.game}</strong><br>
-            状态：<span class="${statusClass}">${statusText}</span><br>
-            行数：${report.previousRows} -> ${report.currentRows}
-            （变化 ${report.rowsAddedByCount}）<br>
-            最新期：${report.previousLatestDrawDate || "无"} / ${report.previousLatestDrawNumber || "无"}
-            -> ${report.currentLatestDrawDate || "未知"} / ${report.currentLatestDrawNumber || "未知"}
+            ${t("status")}: <span class="${statusClass}">${statusText}</span><br>
+            ${t("rows")}: ${report.previousRows} -> ${report.currentRows}
+            (${t("changed")} ${report.rowsAddedByCount})<br>
+            ${t("latestDraw")}: ${report.previousLatestDrawDate || t("none")} / ${report.previousLatestDrawNumber || t("none")}
+            -> ${report.currentLatestDrawDate || t("unknown")} / ${report.currentLatestDrawNumber || t("unknown")}
           </div>
         `;
       }).join("");
@@ -435,7 +594,7 @@
 
     function renderChecks(reports) {
       if (!reports || reports.length === 0) {
-        checks.innerHTML = `<div class="check">还没有完整性报告。</div>`;
+        checks.innerHTML = `<div class="check">${t("noChecks")}</div>`;
         return;
       }
 
@@ -444,57 +603,75 @@
         return `
           <div class="check">
             <strong>${report.game}</strong><br>
-            状态：<span class="${statusClass}">${report.status}</span><br>
-            行数：${report.rows} / 预计 ${report.expectedScheduledRows}<br>
-            日期：${report.firstDrawDate} 到 ${report.lastDrawDate}<br>
-            缺日期：${report.missingScheduledDates}，
-            重复日期：${report.duplicateDates}，
-            无效主号：${report.invalidMainNumberRows}
+            ${t("status")}: <span class="${statusClass}">${report.status}</span><br>
+            ${t("rows")}: ${report.rows} / ${t("expected")} ${report.expectedScheduledRows}<br>
+            ${t("dates")}: ${report.firstDrawDate} -> ${report.lastDrawDate}<br>
+            ${t("missingDates")}: ${report.missingScheduledDates},
+            ${t("duplicateDates")}: ${report.duplicateDates},
+            ${t("invalidMainNumbers")}: ${report.invalidMainNumberRows}
           </div>
         `;
       }).join("");
     }
 
+    function applyLanguage(language) {
+      currentLanguage = language;
+      localStorage.setItem("lotto-ui-language", language);
+      document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
+      document.title = t("pageTitle");
+      langZh.classList.toggle("active", language === "zh");
+      langEn.classList.toggle("active", language === "en");
+      document.querySelectorAll("[data-i18n]").forEach((element) => {
+        element.textContent = t(element.dataset.i18n);
+      });
+      generatedAt.textContent = `${t("generatedAt")}: ${formatDateTime(currentStatus?.generatedAt)}`;
+      setBusy(Boolean(currentStatus?.isRunning));
+      if (currentStatus) {
+        renderPredictions(currentStatus.predictions);
+        renderUpdates(currentStatus.updateSummary);
+        renderChecks(currentStatus.validationReports);
+      }
+    }
+
     async function loadStatus() {
       const response = await fetch("/api/status");
       if (!response.ok) throw new Error(await response.text());
-      const status = await response.json();
-      setBusy(status.isRunning);
-      generatedAt.textContent = `最近生成时间：${formatDateTime(status.generatedAt)}`;
-      renderPredictions(status.predictions);
-      renderUpdates(status.updateSummary);
-      renderChecks(status.validationReports);
-      return status;
+      currentStatus = await response.json();
+      applyLanguage(currentLanguage);
+      return currentStatus;
     }
 
-    async function runAction(endpoint, label) {
+    async function runAction(endpoint, labelKey) {
+      const label = t(labelKey);
       try {
         setBusy(true);
-        writeLog(`${label}开始。联网刷新可能需要一点时间。`);
+        writeLog(t("actionStart", { label }));
         const response = await fetch(endpoint, { method: "POST" });
         const payload = await response.json();
         if (!response.ok) {
-          throw new Error(payload.error || "任务失败");
+          throw new Error(payload.error || "Task failed");
         }
-        renderPredictions(payload.status.predictions);
-        renderUpdates(payload.status.updateSummary);
-        renderChecks(payload.status.validationReports);
-        generatedAt.textContent = `最近生成时间：${formatDateTime(payload.status.generatedAt)}`;
-        writeLog(`${label}完成。`);
+        currentStatus = payload.status;
+        applyLanguage(currentLanguage);
+        writeLog(t("actionDone", { label }));
       } catch (error) {
-        writeLog(`出错：${error.message}`);
+        writeLog(t("actionError", { message: error.message }));
       } finally {
         setBusy(false);
       }
     }
 
-    refreshBtn.addEventListener("click", () => runAction("/api/refresh", "刷新官方数据并预测"));
-    localBtn.addEventListener("click", () => runAction("/api/predict-local", "本地重新预测"));
+    langZh.addEventListener("click", () => applyLanguage("zh"));
+    langEn.addEventListener("click", () => applyLanguage("en"));
+    refreshBtn.addEventListener("click", () => runAction("/api/refresh", "refreshLabel"));
+    localBtn.addEventListener("click", () => runAction("/api/predict-local", "localLabel"));
 
+    applyLanguage(currentLanguage);
+    writeLog(t("ready"));
     loadStatus()
-      .then(() => writeLog("面板已读取最新本地结果。"))
+      .then(() => writeLog(t("panelLoaded")))
       .catch((error) => {
-        writeLog(`读取状态失败：${error.message}`);
+        writeLog(t("loadFailed", { message: error.message }));
         setBusy(false);
       });
   </script>
