@@ -205,9 +205,20 @@ async function findLatestCsv(gameKey) {
     if (!file.name.startsWith(`${gameKey}_`) || !file.name.endsWith(".csv")) continue;
     const fullPath = path.join(outputDir, file.name);
     const stat = await fs.stat(fullPath);
-    candidates.push({ fullPath, mtimeMs: stat.mtimeMs, name: file.name });
+    const dateRange = file.name.match(/_(\d{4}-\d{2}-\d{2})_to_(\d{4}-\d{2}-\d{2})\.csv$/);
+    candidates.push({
+      fullPath,
+      mtimeMs: stat.mtimeMs,
+      name: file.name,
+      startDate: dateRange?.[1] ?? "",
+      endDate: dateRange?.[2] ?? "",
+    });
   }
-  candidates.sort((left, right) => right.mtimeMs - left.mtimeMs);
+  candidates.sort((left, right) =>
+    right.endDate.localeCompare(left.endDate) ||
+    right.startDate.localeCompare(left.startDate) ||
+    right.mtimeMs - left.mtimeMs
+  );
   if (!candidates[0]) {
     throw new Error(`No ${gameKey} CSV found in ${outputDir}`);
   }
@@ -528,12 +539,16 @@ function predictionForGame(rows, config) {
   const ranked = scoreCompositeWeighted(rows, config, poolSize);
   const picks = selectPrizeSharingAwarePicks(ranked, config);
   const nonBirthdayCount = picks.filter((number) => number > 31).length;
+  const latestWinningNumbers = getMainNumbers(latestRow, config).join("-");
 
   return {
     game: config.label,
     prediction_for_next_draw_after: latestRow.draw_date,
     estimated_next_draw_date: predictionDate,
+    latest_draw_date: latestRow.draw_date,
     latest_draw_number: latestRow.draw_number,
+    latest_winning_numbers: latestWinningNumbers,
+    latest_bonus_number: latestRow.bonus_number ?? "",
     model: "composite_weighted_v2",
     half_life_draws: config.halfLife,
     model_weights: `recent_activity=${config.scoreWeights.recentActivity};long_term_hotness=${config.scoreWeights.longTermHotness};cold_rebound=${config.scoreWeights.coldRebound}`,
@@ -597,7 +612,10 @@ const predictionColumns = [
   "game",
   "prediction_for_next_draw_after",
   "estimated_next_draw_date",
+  "latest_draw_date",
   "latest_draw_number",
+  "latest_winning_numbers",
+  "latest_bonus_number",
   "model",
   "half_life_draws",
   "model_weights",

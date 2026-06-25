@@ -72,8 +72,8 @@ cold_rebound=0.20
 
 The repository currently includes the latest official-history CSV files:
 
-- `lotto649_2016-06-22_to_2026-06-21.csv`
-- `lottomax_2016-06-22_to_2026-06-21.csv`
+- `lotto649_2016-06-24_to_2026-06-23.csv`
+- `lottomax_2016-06-24_to_2026-06-23.csv`
 
 After a refresh, the scripts generate updated date-range CSV files and local output files:
 
@@ -170,8 +170,8 @@ cold_rebound=0.20
 
 当前提交包含最新官方历史 CSV：
 
-- `lotto649_2016-06-22_to_2026-06-21.csv`
-- `lottomax_2016-06-22_to_2026-06-21.csv`
+- `lotto649_2016-06-24_to_2026-06-23.csv`
+- `lottomax_2016-06-24_to_2026-06-23.csv`
 
 刷新后脚本会生成新的带日期范围的 CSV，并输出：
 

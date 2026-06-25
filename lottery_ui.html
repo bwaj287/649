@@ -237,6 +237,21 @@
       margin: 26px 0;
     }
 
+    .latest-result {
+      position: relative;
+      z-index: 1;
+      margin: 18px 0 20px;
+      padding: 15px;
+      border: 1px solid rgba(23, 106, 75, 0.18);
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.36);
+    }
+
+    .latest-result .balls {
+      gap: 8px;
+      margin: 12px 0 6px;
+    }
+
     .ball {
       display: grid;
       place-items: center;
@@ -252,10 +267,34 @@
       font-weight: 950;
     }
 
+    .ball.drawn {
+      width: 44px;
+      height: 44px;
+      background:
+        radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.42), transparent 15px),
+        linear-gradient(145deg, var(--green), var(--green-2));
+      box-shadow: inset -7px -8px 14px rgba(4, 42, 28, 0.22), 0 8px 18px rgba(15, 78, 57, 0.18);
+      font-size: 18px;
+    }
+
+    .bonus-chip {
+      display: inline-flex;
+      margin-top: 4px;
+      border-color: rgba(217, 159, 43, 0.42);
+      color: #7b5314;
+      background: rgba(217, 159, 43, 0.14);
+    }
+
     .card:nth-child(2) .ball {
       background:
         radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.48), transparent 18px),
         linear-gradient(145deg, var(--gold), #9c6b18);
+    }
+
+    .card:nth-child(2) .ball.drawn {
+      background:
+        radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.42), transparent 15px),
+        linear-gradient(145deg, var(--green), var(--green-2));
     }
 
     .top-list {
@@ -396,7 +435,11 @@
         noUpdates: U("8FD8 6CA1 6709 66F4 65B0 8BB0 5F55 3002"),
         noChecks: U("8FD8 6CA1 6709 5B8C 6574 6027 62A5 544A 3002"),
         nextDraw: U("4E0B 4E00 671F 5F00 5956 4F30 8BA1"),
+        latestWinningNumbers: U("6700 8FD1 4E00 671F 5F00 5956 53F7 7801"),
+        latestDrawDate: U("5F00 5956 65E5 671F"),
         latestDrawNumber: U("6700 8FD1 6570 636E 671F 53F7"),
+        bonusNumber: U("7279 522B 53F7"),
+        predictionNumbers: U("9884 6D4B 53F7 7801"),
         halfLife: U("534A 8870 671F"),
         drawUnit: U("671F"),
         model: U("6A21 578B"),
@@ -443,7 +486,11 @@
         noUpdates: "No update record yet.",
         noChecks: "No integrity report yet.",
         nextDraw: "Estimated next draw",
+        latestWinningNumbers: "Latest winning numbers",
+        latestDrawDate: "Draw date",
         latestDrawNumber: "Latest draw number",
+        bonusNumber: "Bonus",
+        predictionNumbers: "Prediction",
         halfLife: "Half-life",
         drawUnit: "draws",
         model: "Model",
@@ -542,6 +589,12 @@
         const balls = splitPicks(prediction.picks)
           .map((number) => `<span class="ball">${number}</span>`)
           .join("");
+        const latestBalls = splitPicks(prediction.latest_winning_numbers)
+          .map((number) => `<span class="ball drawn">${number}</span>`)
+          .join("") || `<span class="chip">${t("unknown")}</span>`;
+        const latestBonus = prediction.latest_bonus_number
+          ? `<span class="chip bonus-chip">${t("bonusNumber")}: ${prediction.latest_bonus_number}</span>`
+          : "";
         const topList = parseTopList(prediction.top_12_weighted_numbers)
           .map((item) => `<span class="chip">${item}</span>`)
           .join("");
@@ -549,13 +602,22 @@
         return `
           <article class="panel card">
             <h2>${prediction.game}</h2>
+            <div class="latest-result">
+              <div class="meta">
+                <strong>${t("latestWinningNumbers")}</strong><br>
+                ${t("latestDrawDate")}: ${prediction.latest_draw_date || prediction.prediction_for_next_draw_after || t("unknown")},
+                ${t("latestDrawNumber")}: ${prediction.latest_draw_number || t("unknown")}
+              </div>
+              <div class="balls">${latestBalls}</div>
+              ${latestBonus}
+            </div>
             <div class="meta">
               ${t("nextDraw")}: ${prediction.estimated_next_draw_date || t("unknown")}<br>
-              ${t("latestDrawNumber")}: ${prediction.latest_draw_number || t("unknown")},
               ${t("halfLife")}: ${prediction.half_life_draws} ${t("drawUnit")}<br>
               ${t("model")}: ${prediction.model || t("unknown")},
               ${t("nonBirthdayCount")}: ${prediction.non_birthday_count ?? t("unknown")}
             </div>
+            <div class="meta">${t("predictionNumbers")}</div>
             <div class="balls">${balls}</div>
             <div class="meta">${t("topCandidates")}</div>
             <div class="top-list">${topList}</div>
