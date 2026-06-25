@@ -455,6 +455,74 @@ function selectPrizeSharingAwarePicks(ranked, config) {
     .sort((left, right) => left - right);
 }
 
+function weightedChoice(entries, exponent = 3) {
+  const weightedEntries = entries.map((entry) => ({
+    entry,
+    weight: Math.max(entry.score, 0.0001) ** exponent,
+  }));
+  const totalWeight = weightedEntries.reduce((sum, item) => sum + item.weight, 0);
+  let cursor = Math.random() * totalWeight;
+  for (const item of weightedEntries) {
+    cursor -= item.weight;
+    if (cursor <= 0) return item.entry;
+  }
+  return weightedEntries.at(-1)?.entry;
+}
+
+function selectWeightedRandomPicks(ranked, config) {
+  const candidatePoolSize = Math.min(ranked.length, Math.max(config.pickCount * 5, 28));
+  const remaining = ranked.slice(0, candidatePoolSize);
+  const selected = [];
+
+  while (selected.length < config.pickCount && remaining.length > 0) {
+    const pick = weightedChoice(remaining);
+    const index = remaining.findIndex((entry) => entry.number === pick.number);
+    selected.push(pick);
+    remaining.splice(index, 1);
+  }
+
+  const minimumNonBirthdayNumbers = Math.min(
+    config.minimumNonBirthdayNumbers,
+    ranked.filter((entry) => !entry.isBirthdayNumber).length,
+  );
+
+  while (selected.filter((entry) => !entry.isBirthdayNumber).length < minimumNonBirthdayNumbers) {
+    const selectedNumbers = new Set(selected.map((entry) => entry.number));
+    const replacementPool = ranked
+      .filter((entry) => !entry.isBirthdayNumber && !selectedNumbers.has(entry.number))
+      .slice(0, candidatePoolSize);
+    const birthdayToReplace = [...selected]
+      .filter((entry) => entry.isBirthdayNumber)
+      .sort((left, right) => left.score - right.score)[0];
+    const replacement = weightedChoice(replacementPool);
+
+    if (!replacement || !birthdayToReplace) break;
+
+    const replaceIndex = selected.findIndex((entry) => entry.number === birthdayToReplace.number);
+    selected[replaceIndex] = replacement;
+  }
+
+  return selected
+    .map((entry) => entry.number)
+    .sort((left, right) => left - right);
+}
+
+function buildWeightedRandomAlternatives(ranked, config, stablePicks, count = 5) {
+  const alternatives = [];
+  const seen = new Set([stablePicks.join("-")]);
+  const maxAttempts = count * 80;
+
+  for (let attempt = 0; attempt < maxAttempts && alternatives.length < count; attempt += 1) {
+    const picks = selectWeightedRandomPicks(ranked, config);
+    const key = picks.join("-");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    alternatives.push(picks);
+  }
+
+  return alternatives;
+}
+
 function nextDrawDate(gameKey, latestDateKey) {
   const valid = gameKey === "lotto649" ? new Set([3, 6]) : new Set([2, 5]);
   let cursor = addDays(new Date(`${latestDateKey}T12:00:00`), 1);
@@ -538,6 +606,7 @@ function predictionForGame(rows, config) {
   const poolSize = config.poolSizeForDate(predictionDate);
   const ranked = scoreCompositeWeighted(rows, config, poolSize);
   const picks = selectPrizeSharingAwarePicks(ranked, config);
+  const weightedRandomAlternatives = buildWeightedRandomAlternatives(ranked, config, picks);
   const nonBirthdayCount = picks.filter((number) => number > 31).length;
   const latestWinningNumbers = getMainNumbers(latestRow, config).join("-");
 
@@ -556,6 +625,7 @@ function predictionForGame(rows, config) {
     non_birthday_count: nonBirthdayCount,
     pool_size: poolSize,
     picks: picks.join("-"),
+    weighted_random_alternatives: weightedRandomAlternatives.map((alternative) => alternative.join("-")).join(";"),
     top_12_weighted_numbers: ranked
       .slice(0, 12)
       .map(
@@ -623,6 +693,7 @@ const predictionColumns = [
   "non_birthday_count",
   "pool_size",
   "picks",
+  "weighted_random_alternatives",
   "top_12_weighted_numbers",
 ];
 
@@ -670,6 +741,7 @@ console.log(
         nextDrawDate: row.estimated_next_draw_date,
         halfLifeDraws: row.half_life_draws,
         picks: row.picks,
+        weightedRandomAlternatives: row.weighted_random_alternatives,
       })),
       files: {
         latestPredictionsCsv,

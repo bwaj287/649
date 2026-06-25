@@ -252,6 +252,11 @@
       margin: 12px 0 6px;
     }
 
+    .balls.compact {
+      gap: 7px;
+      margin: 0;
+    }
+
     .ball {
       display: grid;
       place-items: center;
@@ -285,6 +290,13 @@
       background: rgba(217, 159, 43, 0.14);
     }
 
+    .balls.compact .ball {
+      width: 34px;
+      height: 34px;
+      font-size: 14px;
+      box-shadow: inset -5px -6px 10px rgba(60, 12, 5, 0.16), 0 6px 14px rgba(159, 47, 29, 0.14);
+    }
+
     .card:nth-child(2) .ball {
       background:
         radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.48), transparent 18px),
@@ -313,6 +325,31 @@
       background: rgba(255, 255, 255, 0.42);
       color: var(--muted);
       font-size: 12px;
+    }
+
+    .alternative-list {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      gap: 9px;
+      margin: 12px 0 20px;
+    }
+
+    .alternative-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 10px;
+      border: 1px solid rgba(22, 33, 29, 0.10);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.30);
+    }
+
+    .alternative-index {
+      min-width: 32px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 900;
     }
 
     .checks {
@@ -440,6 +477,9 @@
         latestDrawNumber: U("6700 8FD1 6570 636E 671F 53F7"),
         bonusNumber: U("7279 522B 53F7"),
         predictionNumbers: U("9884 6D4B 53F7 7801"),
+        stablePick: U("4E3B 63A8 8350"),
+        weightedAlternatives: U("52A0 6743 968F 673A 5907 9009"),
+        alternativesHint: U("6BCF 6B21 91CD 7B97 4F1A 53D8 5316"),
         halfLife: U("534A 8870 671F"),
         drawUnit: U("671F"),
         model: U("6A21 578B"),
@@ -491,6 +531,9 @@
         latestDrawNumber: "Latest draw number",
         bonusNumber: "Bonus",
         predictionNumbers: "Prediction",
+        stablePick: "Stable best pick",
+        weightedAlternatives: "Weighted random alternatives",
+        alternativesHint: "changes on each recalculation",
         halfLife: "Half-life",
         drawUnit: "draws",
         model: "Model",
@@ -579,6 +622,16 @@
         });
     }
 
+    function parseAlternatives(text) {
+      return String(text || "").split(";").filter(Boolean).slice(0, 5);
+    }
+
+    function renderBalls(picks, className = "") {
+      return splitPicks(picks)
+        .map((number) => `<span class="ball ${className}">${number}</span>`)
+        .join("");
+    }
+
     function renderPredictions(predictions) {
       if (!predictions || predictions.length === 0) {
         cards.innerHTML = `<div class="panel card empty">${t("noPredictions")}</div>`;
@@ -586,15 +639,19 @@
       }
 
       cards.innerHTML = predictions.map((prediction) => {
-        const balls = splitPicks(prediction.picks)
-          .map((number) => `<span class="ball">${number}</span>`)
-          .join("");
-        const latestBalls = splitPicks(prediction.latest_winning_numbers)
-          .map((number) => `<span class="ball drawn">${number}</span>`)
-          .join("") || `<span class="chip">${t("unknown")}</span>`;
+        const balls = renderBalls(prediction.picks);
+        const latestBalls = renderBalls(prediction.latest_winning_numbers, "drawn") || `<span class="chip">${t("unknown")}</span>`;
         const latestBonus = prediction.latest_bonus_number
           ? `<span class="chip bonus-chip">${t("bonusNumber")}: ${prediction.latest_bonus_number}</span>`
           : "";
+        const alternatives = parseAlternatives(prediction.weighted_random_alternatives)
+          .map((alternative, index) => `
+            <div class="alternative-row">
+              <span class="alternative-index">#${index + 1}</span>
+              <div class="balls compact">${renderBalls(alternative)}</div>
+            </div>
+          `)
+          .join("");
         const topList = parseTopList(prediction.top_12_weighted_numbers)
           .map((item) => `<span class="chip">${item}</span>`)
           .join("");
@@ -617,8 +674,15 @@
               ${t("model")}: ${prediction.model || t("unknown")},
               ${t("nonBirthdayCount")}: ${prediction.non_birthday_count ?? t("unknown")}
             </div>
-            <div class="meta">${t("predictionNumbers")}</div>
+            <div class="meta"><strong>${t("stablePick")}</strong> / ${t("predictionNumbers")}</div>
             <div class="balls">${balls}</div>
+            ${alternatives ? `
+              <div class="meta">
+                <strong>${t("weightedAlternatives")}</strong>
+                <span class="chip">${t("alternativesHint")}</span>
+              </div>
+              <div class="alternative-list">${alternatives}</div>
+            ` : ""}
             <div class="meta">${t("topCandidates")}</div>
             <div class="top-list">${topList}</div>
           </article>

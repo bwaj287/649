@@ -68,6 +68,8 @@ long_term_hotness=0.34
 cold_rebound=0.20
 ```
 
+The UI shows one stable best pick plus five weighted random alternatives. The stable pick is deterministic; alternatives are resampled on each recalculation while still using the same score weights and birthday-number rule.
+
 ## Data Files
 
 The repository currently includes the latest official-history CSV files:
@@ -165,6 +167,8 @@ recent_activity=0.46
 long_term_hotness=0.34
 cold_rebound=0.20
 ```
+
+UI 会显示 1 组稳定主推荐和 5 组加权随机备选。主推荐是确定性的；备选会在每次重新预测时重新抽样，但仍使用同一套权重和生日号规则。
 
 ## 数据文件
 
