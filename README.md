@@ -53,12 +53,13 @@ node .\refresh_and_predict.mjs --endDate=2026-06-21
 
 ## Current Model
 
-The current prediction model is `composite_weighted_v2`. It combines:
+The current prediction model is `composite_weighted_v3_pattern_profile`. It combines:
 
 - Recent activity: newer winning numbers receive higher exponentially decayed weight.
 - Long-term hotness: numbers with historically above-expected frequency receive extra score.
 - Cold-number rebound: numbers absent for longer periods receive a mild recovery score.
 - Birthday-number avoidance: each pick keeps at least two `32+` numbers to reduce overlap with common birthday-based tickets.
+- Pattern profile scoring: combinations are scored against historical odd/even balance, low/high balance, sum range, consecutive pairs, same-tail concentration, and repeat count from the latest draw.
 
 Default model weights:
 
@@ -155,12 +156,13 @@ node .\refresh_and_predict.mjs --endDate=2026-06-21
 
 ## 当前模型
 
-当前预测模型为 `composite_weighted_v2`，由几个思路组成：
+当前预测模型为 `composite_weighted_v3_pattern_profile`，由几个思路组成：
 
 - 近期活跃号：最近开奖影响更高，使用指数衰减权重。
 - 长期热号：长期频率高于期望的号码加分。
 - 冷号回补：久未出现的号码温和加分。
 - 避免全生日号：每组至少保留 2 个 `32+` 号码，减少与生日投注人群平分奖金的概率。
+- 号码形态评分：组合会参考历史常见的奇偶比例、大小号比例、和值范围、连号数量、同尾号集中度、与最近一期重号数量。
 
 默认权重：
 

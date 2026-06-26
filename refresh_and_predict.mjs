@@ -17,6 +17,10 @@ const yearsBack = Number(args.yearsBack ?? 10);
 const skipFetch = args.skipFetch === "true";
 const lotto649HalfLife = Number(args.lotto649HalfLife ?? 26);
 const lottoMaxHalfLife = Number(args.lottoMaxHalfLife ?? 208);
+const combinationScoreWeights = {
+  numberScore: 0.72,
+  patternProfile: 0.28,
+};
 
 const gameConfigs = [
   {
@@ -455,10 +459,207 @@ function selectPrizeSharingAwarePicks(ranked, config) {
     .sort((left, right) => left - right);
 }
 
-function weightedChoice(entries, exponent = 3) {
+function quantile(values, ratio) {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((left, right) => left - right);
+  const position = (sorted.length - 1) * ratio;
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+  if (lower === upper) return sorted[lower];
+  return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
+}
+
+function countConsecutivePairs(numbers) {
+  const sorted = [...numbers].sort((left, right) => left - right);
+  let count = 0;
+  for (let index = 1; index < sorted.length; index += 1) {
+    if (sorted[index] === sorted[index - 1] + 1) count += 1;
+  }
+  return count;
+}
+
+function maxSameTailCount(numbers) {
+  const counts = new Map();
+  for (const number of numbers) {
+    const tail = number % 10;
+    counts.set(tail, (counts.get(tail) ?? 0) + 1);
+  }
+  return Math.max(...counts.values());
+}
+
+function describeCombination(numbers, poolSize, latestNumbers = []) {
+  const highCutoff = Math.floor(poolSize / 2);
+  const latestSet = new Set(latestNumbers);
+  return {
+    sum: numbers.reduce((total, number) => total + number, 0),
+    oddCount: numbers.filter((number) => number % 2 !== 0).length,
+    highCount: numbers.filter((number) => number > highCutoff).length,
+    consecutivePairs: countConsecutivePairs(numbers),
+    maxSameTail: maxSameTailCount(numbers),
+    recentRepeatCount: numbers.filter((number) => latestSet.has(number)).length,
+  };
+}
+
+function createPatternProfile(rows, config, poolSize) {
+  const observations = [];
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    const rowPoolSize = config.poolSizeForDate(row.draw_date);
+    const numbers = getMainNumbers(row, config);
+    if (numbers.some((number) => !Number.isInteger(number) || number < 1 || number > rowPoolSize)) {
+      continue;
+    }
+
+    const previousNumbers = index > 0 ? getMainNumbers(rows[index - 1], config) : [];
+    observations.push(describeCombination(numbers, rowPoolSize, previousNumbers));
+  }
+
+  const metric = (name) => observations.map((entry) => entry[name]);
+  const countRange = (name) => [
+    Math.floor(quantile(metric(name), 0.15)),
+    Math.ceil(quantile(metric(name), 0.85)),
+  ];
+
+  return {
+    poolSize,
+    latestNumbers: getMainNumbers(rows.at(-1), config),
+    sumRange: [
+      Math.round(quantile(metric("sum"), 0.15)),
+      Math.round(quantile(metric("sum"), 0.85)),
+    ],
+    oddRange: countRange("oddCount"),
+    highRange: countRange("highCount"),
+    maxConsecutivePairs: Math.max(1, Math.ceil(quantile(metric("consecutivePairs"), 0.85))),
+    maxSameTail: Math.max(2, Math.ceil(quantile(metric("maxSameTail"), 0.85))),
+    maxRecentRepeats: Math.max(1, Math.ceil(quantile(metric("recentRepeatCount"), 0.85))),
+  };
+}
+
+function rangeScore(value, lower, upper, tolerance) {
+  if (value >= lower && value <= upper) return 1;
+  const distance = value < lower ? lower - value : value - upper;
+  return Math.max(0, 1 - distance / Math.max(1, tolerance));
+}
+
+function maxScore(value, maximum, tolerance = 1) {
+  if (value <= maximum) return 1;
+  return Math.max(0, 1 - (value - maximum) / Math.max(1, tolerance));
+}
+
+function scorePatternFeatures(features, profile, pickCount) {
+  const scores = {
+    sum: rangeScore(features.sum, profile.sumRange[0], profile.sumRange[1], pickCount * 4),
+    odd: rangeScore(features.oddCount, profile.oddRange[0], profile.oddRange[1], 1),
+    high: rangeScore(features.highCount, profile.highRange[0], profile.highRange[1], 1),
+    consecutive: maxScore(features.consecutivePairs, profile.maxConsecutivePairs, 1),
+    tail: maxScore(features.maxSameTail, profile.maxSameTail, 1),
+    repeat: maxScore(features.recentRepeatCount, profile.maxRecentRepeats, 1),
+  };
+
+  return (
+    0.25 * scores.sum +
+    0.18 * scores.odd +
+    0.18 * scores.high +
+    0.15 * scores.consecutive +
+    0.12 * scores.tail +
+    0.12 * scores.repeat
+  );
+}
+
+function createRankLookup(ranked) {
+  return new Map(ranked.map((entry) => [entry.number, entry]));
+}
+
+function scoreCandidate(numbers, rankedLookup, patternProfile, config) {
+  const entries = numbers.map((number) => rankedLookup.get(number)).filter(Boolean);
+  const numberScore =
+    entries.reduce((sum, entry) => sum + entry.score, 0) / Math.max(1, entries.length);
+  const patternFeatures = describeCombination(
+    numbers,
+    patternProfile.poolSize,
+    patternProfile.latestNumbers,
+  );
+  const patternScore = scorePatternFeatures(patternFeatures, patternProfile, config.pickCount);
+  const combinedScore =
+    combinationScoreWeights.numberScore * numberScore +
+    combinationScoreWeights.patternProfile * patternScore;
+
+  return {
+    numbers: [...numbers].sort((left, right) => left - right),
+    numberScore,
+    patternFeatures,
+    patternScore,
+    combinedScore,
+  };
+}
+
+function isBetterCandidate(candidate, best) {
+  if (!best) return true;
+  if (candidate.combinedScore !== best.combinedScore) {
+    return candidate.combinedScore > best.combinedScore;
+  }
+  if (candidate.numberScore !== best.numberScore) {
+    return candidate.numberScore > best.numberScore;
+  }
+  const leftKey = candidate.numbers.join("-");
+  const rightKey = best.numbers.join("-");
+  return leftKey < rightKey;
+}
+
+function selectPatternAwarePicks(ranked, config, patternProfile) {
+  const candidatePoolSize = Math.min(ranked.length, 24);
+  const candidatePool = ranked.slice(0, candidatePoolSize);
+  const rankedLookup = createRankLookup(ranked);
+  const chosen = [];
+  let best = null;
+
+  function visit(startIndex) {
+    if (chosen.length === config.pickCount) {
+      const nonBirthdayCount = chosen.filter((entry) => !entry.isBirthdayNumber).length;
+      if (nonBirthdayCount < config.minimumNonBirthdayNumbers) return;
+
+      const candidate = scoreCandidate(
+        chosen.map((entry) => entry.number),
+        rankedLookup,
+        patternProfile,
+        config,
+      );
+      if (isBetterCandidate(candidate, best)) best = candidate;
+      return;
+    }
+
+    const needed = config.pickCount - chosen.length;
+    for (let index = startIndex; index <= candidatePool.length - needed; index += 1) {
+      chosen.push(candidatePool[index]);
+      visit(index + 1);
+      chosen.pop();
+    }
+  }
+
+  visit(0);
+  if (best) return best;
+
+  const fallback = selectPrizeSharingAwarePicks(ranked, config);
+  return scoreCandidate(fallback, rankedLookup, patternProfile, config);
+}
+
+function formatPatternProfile(candidate, profile) {
+  const features = candidate.patternFeatures;
+  return [
+    `score=${candidate.patternScore.toFixed(2)}`,
+    `sum=${features.sum}(${profile.sumRange[0]}-${profile.sumRange[1]})`,
+    `odd=${features.oddCount}(${profile.oddRange[0]}-${profile.oddRange[1]})`,
+    `high=${features.highCount}(${profile.highRange[0]}-${profile.highRange[1]})`,
+    `consecutive=${features.consecutivePairs}(max${profile.maxConsecutivePairs})`,
+    `same_tail=${features.maxSameTail}(max${profile.maxSameTail})`,
+    `repeat_last=${features.recentRepeatCount}(max${profile.maxRecentRepeats})`,
+  ].join(";");
+}
+
+function weightedChoice(entries, exponent = 3, weightSelector = (entry) => entry.score) {
   const weightedEntries = entries.map((entry) => ({
     entry,
-    weight: Math.max(entry.score, 0.0001) ** exponent,
+    weight: Math.max(weightSelector(entry), 0.0001) ** exponent,
   }));
   const totalWeight = weightedEntries.reduce((sum, item) => sum + item.weight, 0);
   let cursor = Math.random() * totalWeight;
@@ -469,7 +670,7 @@ function weightedChoice(entries, exponent = 3) {
   return weightedEntries.at(-1)?.entry;
 }
 
-function selectWeightedRandomPicks(ranked, config) {
+function drawRawWeightedPicks(ranked, config) {
   const candidatePoolSize = Math.min(ranked.length, Math.max(config.pickCount * 5, 28));
   const remaining = ranked.slice(0, candidatePoolSize);
   const selected = [];
@@ -507,17 +708,33 @@ function selectWeightedRandomPicks(ranked, config) {
     .sort((left, right) => left - right);
 }
 
-function buildWeightedRandomAlternatives(ranked, config, stablePicks, count = 5) {
+function selectWeightedRandomPicks(ranked, config, patternProfile) {
+  const rankedLookup = createRankLookup(ranked);
+  const candidates = [];
+  const seen = new Set();
+
+  for (let attempt = 0; attempt < 45; attempt += 1) {
+    const numbers = drawRawWeightedPicks(ranked, config);
+    const key = numbers.join("-");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    candidates.push(scoreCandidate(numbers, rankedLookup, patternProfile, config));
+  }
+
+  return weightedChoice(candidates, 4, (candidate) => candidate.combinedScore) ?? candidates[0];
+}
+
+function buildWeightedRandomAlternatives(ranked, config, stablePicks, patternProfile, count = 5) {
   const alternatives = [];
   const seen = new Set([stablePicks.join("-")]);
   const maxAttempts = count * 80;
 
   for (let attempt = 0; attempt < maxAttempts && alternatives.length < count; attempt += 1) {
-    const picks = selectWeightedRandomPicks(ranked, config);
-    const key = picks.join("-");
+    const candidate = selectWeightedRandomPicks(ranked, config, patternProfile);
+    const key = candidate.numbers.join("-");
     if (seen.has(key)) continue;
     seen.add(key);
-    alternatives.push(picks);
+    alternatives.push(candidate);
   }
 
   return alternatives;
@@ -605,8 +822,15 @@ function predictionForGame(rows, config, predictionGeneratedAt) {
   const predictionDate = nextDrawDate(config.key, latestRow.draw_date);
   const poolSize = config.poolSizeForDate(predictionDate);
   const ranked = scoreCompositeWeighted(rows, config, poolSize);
-  const picks = selectPrizeSharingAwarePicks(ranked, config);
-  const weightedRandomAlternatives = buildWeightedRandomAlternatives(ranked, config, picks);
+  const patternProfile = createPatternProfile(rows, config, poolSize);
+  const selectedCandidate = selectPatternAwarePicks(ranked, config, patternProfile);
+  const picks = selectedCandidate.numbers;
+  const weightedRandomAlternatives = buildWeightedRandomAlternatives(
+    ranked,
+    config,
+    picks,
+    patternProfile,
+  );
   const nonBirthdayCount = picks.filter((number) => number > 31).length;
   const latestWinningNumbers = getMainNumbers(latestRow, config).join("-");
 
@@ -619,14 +843,18 @@ function predictionForGame(rows, config, predictionGeneratedAt) {
     latest_draw_number: latestRow.draw_number,
     latest_winning_numbers: latestWinningNumbers,
     latest_bonus_number: latestRow.bonus_number ?? "",
-    model: "composite_weighted_v2",
+    model: "composite_weighted_v3_pattern_profile",
     half_life_draws: config.halfLife,
-    model_weights: `recent_activity=${config.scoreWeights.recentActivity};long_term_hotness=${config.scoreWeights.longTermHotness};cold_rebound=${config.scoreWeights.coldRebound}`,
+    model_weights: `recent_activity=${config.scoreWeights.recentActivity};long_term_hotness=${config.scoreWeights.longTermHotness};cold_rebound=${config.scoreWeights.coldRebound};number_score=${combinationScoreWeights.numberScore};pattern_profile=${combinationScoreWeights.patternProfile}`,
     birthday_sharing_rule: `minimum_${config.minimumNonBirthdayNumbers}_numbers_above_31`,
     non_birthday_count: nonBirthdayCount,
     pool_size: poolSize,
+    pattern_score: selectedCandidate.patternScore.toFixed(4),
+    pattern_profile: formatPatternProfile(selectedCandidate, patternProfile),
     picks: picks.join("-"),
-    weighted_random_alternatives: weightedRandomAlternatives.map((alternative) => alternative.join("-")).join(";"),
+    weighted_random_alternatives: weightedRandomAlternatives
+      .map((alternative) => alternative.numbers.join("-"))
+      .join(";"),
     top_12_weighted_numbers: ranked
       .slice(0, 12)
       .map(
@@ -695,6 +923,8 @@ const predictionColumns = [
   "birthday_sharing_rule",
   "non_birthday_count",
   "pool_size",
+  "pattern_score",
+  "pattern_profile",
   "picks",
   "weighted_random_alternatives",
   "top_12_weighted_numbers",
@@ -746,6 +976,7 @@ console.log(
         predictionGeneratedAt: row.prediction_generated_at,
         nextDrawDate: row.estimated_next_draw_date,
         halfLifeDraws: row.half_life_draws,
+        patternScore: row.pattern_score,
         picks: row.picks,
         weightedRandomAlternatives: row.weighted_random_alternatives,
       })),
