@@ -78,6 +78,8 @@ async function getStatus() {
     predictions,
     predictionsText,
     updateSummary: report?.updateSummary ?? [],
+    predictionAudit: report?.predictionAudit ?? [],
+    trainingRun: report?.trainingRun ?? null,
     validationReports: report?.validationReports ?? [],
     files: report?.predictionFiles ?? {
       json: predictionsPath,

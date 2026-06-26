@@ -39,6 +39,8 @@ Refresh official data online and generate new predictions:
 node .\refresh_and_predict.mjs
 ```
 
+When new official draw data is found, this command compares the previous stable prediction against the latest newly added draw, reports hits and hit rate, retrains weights, then generates the next prediction. If no new draw data is found, it skips comparison/retraining and only refreshes weighted random alternatives.
+
 Recalculate predictions using local CSV files only:
 
 ```powershell
@@ -156,6 +158,8 @@ http://127.0.0.1:6490
 ```powershell
 node .\refresh_and_predict.mjs
 ```
+
+如果发现官方新增开奖数据，这个命令会先用上一次主推荐对比最新新增开奖，输出命中号码、命中数和命中率，然后重新训练权重并生成新预测。如果没有新增开奖数据，则跳过对比和重训，只刷新加权随机备选。
 
 只使用本地已有 CSV 重新预测：
 

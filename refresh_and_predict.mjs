@@ -16,6 +16,7 @@ const rootDir = args.rootDir ?? scriptDir;
 const outputDir = args.outputDir ?? rootDir;
 const yearsBack = Number(args.yearsBack ?? 10);
 const skipFetch = args.skipFetch === "true";
+const trainOnNewData = args.trainOnNewData !== "false";
 const modelConfigPath = args.modelConfig ?? path.join(rootDir, "trained_model_config.json");
 const useTrainedModelConfig = args.useTrainedModelConfig !== "false";
 const lotto649HalfLife = Number(args.lotto649HalfLife ?? 26);
@@ -24,7 +25,7 @@ const defaultCombinationScoreWeights = {
   numberScore: 0.72,
   patternProfile: 0.28,
 };
-const trainedModelConfig = loadTrainedModelConfig();
+let trainedModelConfig = loadTrainedModelConfig();
 
 function loadTrainedModelConfig() {
   if (!useTrainedModelConfig || !fsSync.existsSync(modelConfigPath)) return null;
@@ -58,8 +59,9 @@ function applyTrainedOverrides(config) {
   };
 }
 
-const gameConfigs = [
-  applyTrainedOverrides({
+function buildGameConfigs() {
+  return [
+    applyTrainedOverrides({
     key: "lotto649",
     label: "Lotto 649",
     pickCount: 6,
@@ -76,8 +78,8 @@ const gameConfigs = [
     poolSizeForDate() {
       return 49;
     },
-  }),
-  applyTrainedOverrides({
+    }),
+    applyTrainedOverrides({
     key: "lottomax",
     label: "Lotto Max",
     pickCount: 7,
@@ -95,8 +97,11 @@ const gameConfigs = [
       if (drawDate >= "2019-05-14") return 50;
       return 49;
     },
-  }),
-];
+    }),
+  ];
+}
+
+let gameConfigs = buildGameConfigs();
 
 function parseCsv(text) {
   const rows = [];
@@ -159,6 +164,91 @@ function rowsToCsv(rows, columns) {
     columns.join(","),
     ...rows.map((row) => columns.map((column) => escapeCsvValue(row[column])).join(",")),
   ].join("\r\n") + "\r\n";
+}
+
+async function readJsonIfExists(filePath, fallback = null) {
+  try {
+    return JSON.parse(await fs.readFile(filePath, "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") return fallback;
+    throw error;
+  }
+}
+
+function splitNumberList(value) {
+  return String(value || "")
+    .split("-")
+    .map((number) => Number(number))
+    .filter((number) => Number.isInteger(number));
+}
+
+function countNumberHits(predictedNumbers, actualNumbers) {
+  const actualSet = new Set(actualNumbers);
+  return predictedNumbers.filter((number) => actualSet.has(number));
+}
+
+function latestNewRow(rows, previousLatestDrawDate) {
+  const newRows = previousLatestDrawDate
+    ? rows.filter((row) => row.draw_date > previousLatestDrawDate)
+    : rows;
+  return newRows.at(-1) ?? null;
+}
+
+function buildPredictionAudit({ previousPredictions, rowsByGame, updateSummary, configs }) {
+  const predictionsByGame = new Map(previousPredictions.map((prediction) => [
+    prediction.game,
+    prediction,
+  ]));
+  const configsByLabel = new Map(configs.map((config) => [config.label, config]));
+  const summaryByGame = new Map(updateSummary.map((summary) => [summary.game, summary]));
+
+  return configs.map((config) => {
+    const update = summaryByGame.get(config.label);
+    const rows = rowsByGame[config.key] ?? [];
+    const previousPrediction = predictionsByGame.get(config.label);
+    const comparedRow = latestNewRow(rows, update?.previousLatestDrawDate ?? "");
+
+    if (!update || Number(update.newDrawsAfterPreviousLatest) === 0 || !comparedRow) {
+      return {
+        game: config.label,
+        status: "no_new_data",
+        message: "No new draw data; only refreshed weighted random alternatives.",
+      };
+    }
+
+    if (!previousPrediction?.picks) {
+      return {
+        game: config.label,
+        status: "missing_previous_prediction",
+        comparedDrawDate: comparedRow.draw_date,
+        comparedDrawNumber: comparedRow.draw_number,
+        actualNumbers: getMainNumbers(comparedRow, config).join("-"),
+        message: "No previous prediction was available for comparison.",
+      };
+    }
+
+    const predictedNumbers = splitNumberList(previousPrediction.picks);
+    const actualNumbers = getMainNumbers(comparedRow, config);
+    const matchedNumbers = countNumberHits(predictedNumbers, actualNumbers);
+    const hitRate = predictedNumbers.length > 0 ? matchedNumbers.length / predictedNumbers.length : 0;
+
+    return {
+      game: config.label,
+      status: "compared_latest_new_draw",
+      previousPredictionGeneratedAt: previousPrediction.prediction_generated_at ?? "",
+      previousPredictionForDrawDate: previousPrediction.estimated_next_draw_date ?? "",
+      comparedDrawDate: comparedRow.draw_date,
+      comparedDrawNumber: comparedRow.draw_number,
+      comparedDrawWasLatestOfNewData: true,
+      newDrawsAfterPreviousLatest: update.newDrawsAfterPreviousLatest,
+      predictedNumbers: predictedNumbers.join("-"),
+      actualNumbers: actualNumbers.join("-"),
+      matchedNumbers: matchedNumbers.join("-"),
+      hits: matchedNumbers.length,
+      pickCount: predictedNumbers.length,
+      hitRate: hitRate.toFixed(4),
+    };
+  }).filter((audit) => configsByLabel.has(audit.game));
 }
 
 function pad(value) {
@@ -329,6 +419,45 @@ async function refreshOfficialData() {
 
   const result = await runNode(scriptPath, scriptArgs);
   return parseLastJson(result.stdout);
+}
+
+async function trainModelIfNeeded(hasNewData) {
+  if (skipFetch) {
+    return { status: "skipped", reason: "local_reprediction" };
+  }
+
+  if (!hasNewData) {
+    return { status: "skipped", reason: "no_new_data" };
+  }
+
+  if (!trainOnNewData) {
+    return { status: "skipped", reason: "disabled" };
+  }
+
+  const trainScript = path.join(rootDir, "train_model_weights.mjs");
+  const trainArgs = [`--rootDir=${outputDir}`, `--configOutput=${modelConfigPath}`];
+  if (args.trainTrials) {
+    trainArgs.push(`--trials=${args.trainTrials}`);
+  }
+  if (args.trainSamplesPerDraw) {
+    trainArgs.push(`--samplesPerDraw=${args.trainSamplesPerDraw}`);
+  }
+  if (args.trainSeed) {
+    trainArgs.push(`--seed=${args.trainSeed}`);
+  }
+
+  const result = await runNode(trainScript, trainArgs);
+  const summary = parseLastJson(result.stdout);
+  trainedModelConfig = loadTrainedModelConfig();
+  gameConfigs = buildGameConfigs();
+
+  return {
+    status: "trained",
+    generatedAt: summary.generatedAt,
+    summaryPath: summary.summaryPath,
+    configOutputPath: summary.configOutputPath,
+    games: summary.games,
+  };
 }
 
 function summarizeUpdate({ config, before, afterRows, csvPath }) {
@@ -907,6 +1036,8 @@ function predictionForGame(rows, config, predictionGeneratedAt) {
   };
 }
 
+const previousPredictionsPath = path.join(outputDir, "latest_weighted_predictions.json");
+const previousPredictions = await readJsonIfExists(previousPredictionsPath, []);
 const beforeSnapshots = await collectExistingSnapshots();
 const refresh = await refreshOfficialData();
 const startDateKey = refresh.startDate ?? "";
@@ -920,6 +1051,7 @@ const csvPaths = {
 const validationReports = [];
 const predictionRows = [];
 const updateSummary = [];
+const rowsByGame = {};
 const predictionGeneratedAt = new Date().toISOString();
 
 for (const config of gameConfigs) {
@@ -929,6 +1061,7 @@ for (const config of gameConfigs) {
     if (dateCompare !== 0) return dateCompare;
     return Number(left.draw_number) - Number(right.draw_number);
   });
+  rowsByGame[config.key] = rows;
 
   updateSummary.push(
     summarizeUpdate({
@@ -947,7 +1080,20 @@ for (const config of gameConfigs) {
       endDateKey || rows.at(-1)?.draw_date,
     ),
   );
-  predictionRows.push(predictionForGame(rows, config, predictionGeneratedAt));
+}
+
+const predictionAudit = buildPredictionAudit({
+  previousPredictions,
+  rowsByGame,
+  updateSummary,
+  configs: gameConfigs,
+});
+const hasNewOfficialData =
+  !skipFetch && updateSummary.some((summary) => Number(summary.newDrawsAfterPreviousLatest) > 0);
+const trainingRun = await trainModelIfNeeded(hasNewOfficialData);
+
+for (const config of gameConfigs) {
+  predictionRows.push(predictionForGame(rowsByGame[config.key], config, predictionGeneratedAt));
 }
 
 const predictionColumns = [
@@ -987,6 +1133,8 @@ await fs.writeFile(
       refreshedAt: predictionGeneratedAt,
       refresh,
       updateSummary,
+      predictionAudit,
+      trainingRun,
       validationReports,
       predictionFiles: {
         csv: latestPredictionsCsv,
@@ -1013,6 +1161,8 @@ console.log(
       outputDir,
       refreshedCsvs: csvPaths,
       updateSummary,
+      predictionAudit,
+      trainingRun,
       validationReports,
       predictions: predictionRows.map((row) => ({
         game: row.game,

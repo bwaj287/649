@@ -438,6 +438,8 @@
     <section class="panel checks">
       <h2 data-i18n="updateTitle">This Update</h2>
       <div class="check-grid" id="updates"></div>
+      <h2 class="section-gap" data-i18n="auditTitle">Prediction Check</h2>
+      <div class="check-grid" id="audits"></div>
       <h2 class="section-gap" data-i18n="integrityTitle">Data Integrity</h2>
       <div class="check-grid" id="checks"></div>
       <div class="log" id="log">Ready.</div>
@@ -462,6 +464,7 @@
         refreshButton: U("5237 65B0 5B98 65B9 6570 636E 5E76 9884 6D4B"),
         localButton: U("53EA 7528 672C 5730 6570 636E 91CD 65B0 9884 6D4B"),
         updateTitle: U("672C 6B21 66F4 65B0"),
+        auditTitle: U("9884 6D4B 547D 4E2D 68C0 67E5"),
         integrityTitle: U("6570 636E 5B8C 6574 6027"),
         reading: U("8BFB 53D6 4E2D"),
         idle: U("7A7A 95F2"),
@@ -470,6 +473,7 @@
         noGeneratedAt: U("8FD8 6CA1 6709 751F 6210 8BB0 5F55"),
         noPredictions: U("8FD8 6CA1 6709 9884 6D4B 7ED3 679C 3002 8BF7 5148 91CD 65B0 9884 6D4B 3002"),
         noUpdates: U("8FD8 6CA1 6709 66F4 65B0 8BB0 5F55 3002"),
+        noAudit: U("8FD8 6CA1 6709 9884 6D4B 68C0 67E5 8BB0 5F55 3002"),
         noChecks: U("8FD8 6CA1 6709 5B8C 6574 6027 62A5 544A 3002"),
         nextDraw: U("4E0B 4E00 671F 5F00 5956 4F30 8BA1"),
         latestWinningNumbers: U("6700 8FD1 4E00 671F 5F00 5956 53F7 7801"),
@@ -481,6 +485,13 @@
         patternScore: U("5F62 6001 8BC4 5206"),
         patternProfile: U("5F62 6001"),
         trainedConfig: U("8BAD 7EC3 914D 7F6E"),
+        trainingStatus: U("8BAD 7EC3 72B6 6001"),
+        previousPick: U("4E0A 6B21 9884 6D4B"),
+        latestActual: U("6700 65B0 5F00 5956"),
+        hitRate: U("547D 4E2D 7387"),
+        matchedNumbers: U("547D 4E2D 53F7 7801"),
+        noNewDataAudit: U("6CA1 6709 65B0 589E 5F00 5956 FF0C 53EA 5237 65B0 5907 9009 9884 6D4B 3002"),
+        noPreviousPrediction: U("6CA1 6709 4E0A 6B21 9884 6D4B 53EF 5BF9 6BD4 3002"),
         stablePick: U("4E3B 63A8 8350"),
         weightedAlternatives: U("52A0 6743 968F 673A 5907 9009"),
         alternativesHint: U("6BCF 6B21 91CD 7B97 4F1A 53D8 5316"),
@@ -520,6 +531,7 @@
         refreshButton: "Refresh official data and predict",
         localButton: "Predict from local data only",
         updateTitle: "This Update",
+        auditTitle: "Prediction Check",
         integrityTitle: "Data Integrity",
         reading: "Loading",
         idle: "Idle",
@@ -528,6 +540,7 @@
         noGeneratedAt: "No generated record yet",
         noPredictions: "No predictions yet. Use \"Predict from local data only\" to generate the first result.",
         noUpdates: "No update record yet.",
+        noAudit: "No prediction check record yet.",
         noChecks: "No integrity report yet.",
         nextDraw: "Estimated next draw",
         latestWinningNumbers: "Latest winning numbers",
@@ -539,6 +552,13 @@
         patternScore: "Pattern score",
         patternProfile: "Pattern profile",
         trainedConfig: "Trained config",
+        trainingStatus: "Training status",
+        previousPick: "Previous prediction",
+        latestActual: "Latest actual draw",
+        hitRate: "Hit rate",
+        matchedNumbers: "Matched numbers",
+        noNewDataAudit: "No new draw data; only refreshed weighted random alternatives.",
+        noPreviousPrediction: "No previous prediction was available for comparison.",
         stablePick: "Stable best pick",
         weightedAlternatives: "Weighted random alternatives",
         alternativesHint: "changes on each recalculation",
@@ -574,6 +594,7 @@
 
     const cards = document.querySelector("#cards");
     const updates = document.querySelector("#updates");
+    const audits = document.querySelector("#audits");
     const checks = document.querySelector("#checks");
     const log = document.querySelector("#log");
     const runState = document.querySelector("#runState");
@@ -733,6 +754,68 @@
       }).join("");
     }
 
+    function renderAudits(reports, trainingRun) {
+      const cards = [];
+
+      if (trainingRun) {
+        cards.push(`
+          <div class="check">
+            <strong>${t("trainingStatus")}</strong><br>
+            ${t("status")}: <span class="${trainingRun.status === "trained" ? "ok" : "warn"}">${trainingRun.status}</span><br>
+            ${trainingRun.reason ? `${trainingRun.reason}<br>` : ""}
+            ${trainingRun.generatedAt ? `${t("generatedAt")}: ${formatDateTime(trainingRun.generatedAt)}` : ""}
+          </div>
+        `);
+      }
+
+      if (!reports || reports.length === 0) {
+        cards.push(`<div class="check">${t("noAudit")}</div>`);
+        audits.innerHTML = cards.join("");
+        return;
+      }
+
+      for (const report of reports) {
+        if (report.status === "no_new_data") {
+          cards.push(`
+            <div class="check">
+              <strong>${report.game}</strong><br>
+              ${t("status")}: <span class="warn">${report.status}</span><br>
+              ${t("noNewDataAudit")}
+            </div>
+          `);
+          continue;
+        }
+
+        if (report.status === "missing_previous_prediction") {
+          cards.push(`
+            <div class="check">
+              <strong>${report.game}</strong><br>
+              ${t("latestActual")}: ${report.comparedDrawDate || t("unknown")} / ${report.comparedDrawNumber || t("unknown")}<br>
+              ${t("noPreviousPrediction")}
+            </div>
+          `);
+          continue;
+        }
+
+        const hits = Number(report.hits || 0);
+        const hitClass = hits > 0 ? "ok" : "warn";
+        const hitRate = `${(Number(report.hitRate || 0) * 100).toFixed(1)}%`;
+        cards.push(`
+          <div class="check">
+            <strong>${report.game}</strong><br>
+            ${t("latestActual")}: ${report.comparedDrawDate} / ${report.comparedDrawNumber}<br>
+            ${t("previousPick")}: ${report.predictedNumbers || t("unknown")}<br>
+            ${t("latestWinningNumbers")}: ${report.actualNumbers || t("unknown")}<br>
+            ${t("status")}: <span class="${hitClass}">${hits}/${report.pickCount || "?"}</span>,
+            ${t("hitRate")}: ${hitRate}<br>
+            ${t("matchedNumbers")}: ${report.matchedNumbers || t("none")}
+          </div>
+        `);
+      }
+
+      audits.innerHTML = cards.join("");
+    }
+
     function renderChecks(reports) {
       if (!reports || reports.length === 0) {
         checks.innerHTML = `<div class="check">${t("noChecks")}</div>`;
@@ -770,6 +853,7 @@
       if (currentStatus) {
         renderPredictions(currentStatus.predictions);
         renderUpdates(currentStatus.updateSummary);
+        renderAudits(currentStatus.predictionAudit, currentStatus.trainingRun);
         renderChecks(currentStatus.validationReports);
       }
     }
