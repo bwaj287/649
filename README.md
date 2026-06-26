@@ -70,6 +70,8 @@ cold_rebound=0.20
 
 The UI shows one stable best pick plus five weighted random alternatives. The stable pick is deterministic; alternatives are resampled on each recalculation while still using the same score weights and birthday-number rule.
 
+Each generated prediction includes a `prediction_generated_at` timestamp so old number sets are easy to identify.
+
 ## Data Files
 
 The repository currently includes the latest official-history CSV files:
@@ -169,6 +171,8 @@ cold_rebound=0.20
 ```
 
 UI 会显示 1 组稳定主推荐和 5 组加权随机备选。主推荐是确定性的；备选会在每次重新预测时重新抽样，但仍使用同一套权重和生日号规则。
+
+每次生成的预测都会带 `prediction_generated_at` 时间戳，方便区分旧号码，避免重复使用。
 
 ## 数据文件
 

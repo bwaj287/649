@@ -600,7 +600,7 @@ function validateRows(rows, config, csvPath, startDateKey, endDateKey) {
   };
 }
 
-function predictionForGame(rows, config) {
+function predictionForGame(rows, config, predictionGeneratedAt) {
   const latestRow = rows.at(-1);
   const predictionDate = nextDrawDate(config.key, latestRow.draw_date);
   const poolSize = config.poolSizeForDate(predictionDate);
@@ -612,6 +612,7 @@ function predictionForGame(rows, config) {
 
   return {
     game: config.label,
+    prediction_generated_at: predictionGeneratedAt,
     prediction_for_next_draw_after: latestRow.draw_date,
     estimated_next_draw_date: predictionDate,
     latest_draw_date: latestRow.draw_date,
@@ -649,6 +650,7 @@ const csvPaths = {
 const validationReports = [];
 const predictionRows = [];
 const updateSummary = [];
+const predictionGeneratedAt = new Date().toISOString();
 
 for (const config of gameConfigs) {
   const csvPath = csvPaths[config.key];
@@ -675,11 +677,12 @@ for (const config of gameConfigs) {
       endDateKey || rows.at(-1)?.draw_date,
     ),
   );
-  predictionRows.push(predictionForGame(rows, config));
+  predictionRows.push(predictionForGame(rows, config, predictionGeneratedAt));
 }
 
 const predictionColumns = [
   "game",
+  "prediction_generated_at",
   "prediction_for_next_draw_after",
   "estimated_next_draw_date",
   "latest_draw_date",
@@ -708,7 +711,7 @@ await fs.writeFile(
   refreshReportJson,
   JSON.stringify(
     {
-      refreshedAt: new Date().toISOString(),
+      refreshedAt: predictionGeneratedAt,
       refresh,
       updateSummary,
       validationReports,
@@ -725,7 +728,9 @@ await fs.writeFile(
 );
 await fs.writeFile(
   latestPredictionsTxt,
-  predictionRows.map((row) => `${row.game}: ${row.picks}`).join("\r\n") + "\r\n",
+  `Prediction generated at: ${predictionGeneratedAt}\r\n` +
+    predictionRows.map((row) => `${row.game}: ${row.picks}`).join("\r\n") +
+    "\r\n",
   "utf8",
 );
 
@@ -738,6 +743,7 @@ console.log(
       validationReports,
       predictions: predictionRows.map((row) => ({
         game: row.game,
+        predictionGeneratedAt: row.prediction_generated_at,
         nextDrawDate: row.estimated_next_draw_date,
         halfLifeDraws: row.half_life_draws,
         picks: row.picks,
