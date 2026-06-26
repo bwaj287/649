@@ -480,6 +480,7 @@
         predictionTime: U("9884 6D4B 751F 6210 65F6 95F4"),
         patternScore: U("5F62 6001 8BC4 5206"),
         patternProfile: U("5F62 6001"),
+        trainedConfig: U("8BAD 7EC3 914D 7F6E"),
         stablePick: U("4E3B 63A8 8350"),
         weightedAlternatives: U("52A0 6743 968F 673A 5907 9009"),
         alternativesHint: U("6BCF 6B21 91CD 7B97 4F1A 53D8 5316"),
@@ -537,6 +538,7 @@
         predictionTime: "Prediction time",
         patternScore: "Pattern score",
         patternProfile: "Pattern profile",
+        trainedConfig: "Trained config",
         stablePick: "Stable best pick",
         weightedAlternatives: "Weighted random alternatives",
         alternativesHint: "changes on each recalculation",
@@ -659,6 +661,9 @@
           `)
           .join("");
         const predictionTime = formatDateTime(prediction.prediction_generated_at || currentStatus?.generatedAt);
+        const trainedConfigTime = prediction.trained_config_generated_at
+          ? `<br>${t("trainedConfig")}: ${formatDateTime(prediction.trained_config_generated_at)}`
+          : "";
         const topList = parseTopList(prediction.top_12_weighted_numbers)
           .map((item) => `<span class="chip">${item}</span>`)
           .join("");
@@ -679,7 +684,7 @@
               ${t("nextDraw")}: ${prediction.estimated_next_draw_date || t("unknown")}<br>
               ${t("predictionTime")}: ${predictionTime}<br>
               ${t("halfLife")}: ${prediction.half_life_draws} ${t("drawUnit")}<br>
-              ${t("patternScore")}: ${prediction.pattern_score || t("unknown")}<br>
+              ${t("patternScore")}: ${prediction.pattern_score || t("unknown")}${trainedConfigTime}<br>
               ${t("model")}: ${prediction.model || t("unknown")},
               ${t("nonBirthdayCount")}: ${prediction.non_birthday_count ?? t("unknown")}
             </div>

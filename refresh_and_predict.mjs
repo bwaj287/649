@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,15 +16,50 @@ const rootDir = args.rootDir ?? scriptDir;
 const outputDir = args.outputDir ?? rootDir;
 const yearsBack = Number(args.yearsBack ?? 10);
 const skipFetch = args.skipFetch === "true";
+const modelConfigPath = args.modelConfig ?? path.join(rootDir, "trained_model_config.json");
+const useTrainedModelConfig = args.useTrainedModelConfig !== "false";
 const lotto649HalfLife = Number(args.lotto649HalfLife ?? 26);
 const lottoMaxHalfLife = Number(args.lottoMaxHalfLife ?? 208);
-const combinationScoreWeights = {
+const defaultCombinationScoreWeights = {
   numberScore: 0.72,
   patternProfile: 0.28,
 };
+const trainedModelConfig = loadTrainedModelConfig();
+
+function loadTrainedModelConfig() {
+  if (!useTrainedModelConfig || !fsSync.existsSync(modelConfigPath)) return null;
+  try {
+    return JSON.parse(fsSync.readFileSync(modelConfigPath, "utf8"));
+  } catch (error) {
+    console.warn(`Could not read trained model config at ${modelConfigPath}: ${error.message}`);
+    return null;
+  }
+}
+
+function applyTrainedOverrides(config) {
+  const override = trainedModelConfig?.games?.[config.key];
+  if (!override) return config;
+
+  return {
+    ...config,
+    halfLife: Number(override.halfLife ?? config.halfLife),
+    minimumNonBirthdayNumbers: Number(
+      override.minimumNonBirthdayNumbers ?? config.minimumNonBirthdayNumbers,
+    ),
+    scoreWeights: {
+      ...config.scoreWeights,
+      ...(override.scoreWeights ?? {}),
+    },
+    combinationScoreWeights: {
+      ...config.combinationScoreWeights,
+      ...(override.combinationScoreWeights ?? {}),
+    },
+    trainedConfigGeneratedAt: trainedModelConfig.generatedAt ?? "",
+  };
+}
 
 const gameConfigs = [
-  {
+  applyTrainedOverrides({
     key: "lotto649",
     label: "Lotto 649",
     pickCount: 6,
@@ -34,13 +70,14 @@ const gameConfigs = [
       longTermHotness: 0.34,
       coldRebound: 0.2,
     },
+    combinationScoreWeights: defaultCombinationScoreWeights,
     drawDays: new Set([3, 6]),
     mainColumns: ["main_1", "main_2", "main_3", "main_4", "main_5", "main_6"],
     poolSizeForDate() {
       return 49;
     },
-  },
-  {
+  }),
+  applyTrainedOverrides({
     key: "lottomax",
     label: "Lotto Max",
     pickCount: 7,
@@ -51,13 +88,14 @@ const gameConfigs = [
       longTermHotness: 0.34,
       coldRebound: 0.2,
     },
+    combinationScoreWeights: defaultCombinationScoreWeights,
     mainColumns: ["main_1", "main_2", "main_3", "main_4", "main_5", "main_6", "main_7"],
     poolSizeForDate(drawDate) {
       if (drawDate >= "2026-04-14") return 52;
       if (drawDate >= "2019-05-14") return 50;
       return 49;
     },
-  },
+  }),
 ];
 
 function parseCsv(text) {
@@ -580,6 +618,7 @@ function scoreCandidate(numbers, rankedLookup, patternProfile, config) {
     patternProfile.latestNumbers,
   );
   const patternScore = scorePatternFeatures(patternFeatures, patternProfile, config.pickCount);
+  const combinationScoreWeights = config.combinationScoreWeights ?? defaultCombinationScoreWeights;
   const combinedScore =
     combinationScoreWeights.numberScore * numberScore +
     combinationScoreWeights.patternProfile * patternScore;
@@ -843,9 +882,12 @@ function predictionForGame(rows, config, predictionGeneratedAt) {
     latest_draw_number: latestRow.draw_number,
     latest_winning_numbers: latestWinningNumbers,
     latest_bonus_number: latestRow.bonus_number ?? "",
-    model: "composite_weighted_v3_pattern_profile",
+    model: config.trainedConfigGeneratedAt
+      ? "composite_weighted_v3_pattern_profile_trained"
+      : "composite_weighted_v3_pattern_profile",
+    trained_config_generated_at: config.trainedConfigGeneratedAt ?? "",
     half_life_draws: config.halfLife,
-    model_weights: `recent_activity=${config.scoreWeights.recentActivity};long_term_hotness=${config.scoreWeights.longTermHotness};cold_rebound=${config.scoreWeights.coldRebound};number_score=${combinationScoreWeights.numberScore};pattern_profile=${combinationScoreWeights.patternProfile}`,
+    model_weights: `recent_activity=${config.scoreWeights.recentActivity};long_term_hotness=${config.scoreWeights.longTermHotness};cold_rebound=${config.scoreWeights.coldRebound};number_score=${config.combinationScoreWeights.numberScore};pattern_profile=${config.combinationScoreWeights.patternProfile}`,
     birthday_sharing_rule: `minimum_${config.minimumNonBirthdayNumbers}_numbers_above_31`,
     non_birthday_count: nonBirthdayCount,
     pool_size: poolSize,
@@ -918,6 +960,7 @@ const predictionColumns = [
   "latest_winning_numbers",
   "latest_bonus_number",
   "model",
+  "trained_config_generated_at",
   "half_life_draws",
   "model_weights",
   "birthday_sharing_rule",
