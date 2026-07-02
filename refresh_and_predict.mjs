@@ -22,8 +22,9 @@ const useTrainedModelConfig = args.useTrainedModelConfig !== "false";
 const lotto649HalfLife = Number(args.lotto649HalfLife ?? 26);
 const lottoMaxHalfLife = Number(args.lottoMaxHalfLife ?? 208);
 const defaultCombinationScoreWeights = {
-  numberScore: 0.72,
-  patternProfile: 0.28,
+  numberScore: 0.66,
+  patternProfile: 0.24,
+  crowdAvoidance: 0.1,
 };
 let trainedModelConfig = loadTrainedModelConfig();
 
@@ -51,11 +52,24 @@ function applyTrainedOverrides(config) {
       ...config.scoreWeights,
       ...(override.scoreWeights ?? {}),
     },
-    combinationScoreWeights: {
+    combinationScoreWeights: normalizeCombinationScoreWeights({
       ...config.combinationScoreWeights,
       ...(override.combinationScoreWeights ?? {}),
-    },
+    }),
     trainedConfigGeneratedAt: trainedModelConfig.generatedAt ?? "",
+  };
+}
+
+function normalizeCombinationScoreWeights(weights) {
+  const numberScore = Number(weights.numberScore ?? defaultCombinationScoreWeights.numberScore);
+  const patternProfile = Number(weights.patternProfile ?? defaultCombinationScoreWeights.patternProfile);
+  const crowdAvoidance = Number(weights.crowdAvoidance ?? defaultCombinationScoreWeights.crowdAvoidance);
+  const total = Math.max(0.000001, numberScore + patternProfile + crowdAvoidance);
+
+  return {
+    numberScore: numberScore / total,
+    patternProfile: patternProfile / total,
+    crowdAvoidance: crowdAvoidance / total,
   };
 }
 
@@ -182,9 +196,29 @@ function splitNumberList(value) {
     .filter((number) => Number.isInteger(number));
 }
 
+function splitAlternativeNumberLists(value) {
+  return String(value || "")
+    .split(";")
+    .map((alternative) => splitNumberList(alternative))
+    .filter((numbers) => numbers.length > 0);
+}
+
 function countNumberHits(predictedNumbers, actualNumbers) {
   const actualSet = new Set(actualNumbers);
   return predictedNumbers.filter((number) => actualSet.has(number));
+}
+
+function buildHitAudit(predictedNumbers, actualNumbers) {
+  const matchedNumbers = countNumberHits(predictedNumbers, actualNumbers);
+  const hitRate = predictedNumbers.length > 0 ? matchedNumbers.length / predictedNumbers.length : 0;
+
+  return {
+    predictedNumbers: predictedNumbers.join("-"),
+    matchedNumbers: matchedNumbers.join("-"),
+    hits: matchedNumbers.length,
+    pickCount: predictedNumbers.length,
+    hitRate: hitRate.toFixed(4),
+  };
 }
 
 function latestNewRow(rows, previousLatestDrawDate) {
@@ -227,10 +261,30 @@ function buildPredictionAudit({ previousPredictions, rowsByGame, updateSummary, 
       };
     }
 
-    const predictedNumbers = splitNumberList(previousPrediction.picks);
     const actualNumbers = getMainNumbers(comparedRow, config);
-    const matchedNumbers = countNumberHits(predictedNumbers, actualNumbers);
-    const hitRate = predictedNumbers.length > 0 ? matchedNumbers.length / predictedNumbers.length : 0;
+    const primaryAudit = buildHitAudit(splitNumberList(previousPrediction.picks), actualNumbers);
+    const weightedAlternatives = splitAlternativeNumberLists(
+      previousPrediction.weighted_random_alternatives ?? previousPrediction.weightedRandomAlternatives,
+    )
+      .map((numbers, index) => ({
+        index: index + 1,
+        ...buildHitAudit(numbers, actualNumbers),
+      }));
+    const bestWeightedAlternative = weightedAlternatives
+      .reduce((best, alternative) => {
+        if (!best) return alternative;
+        if (alternative.hits !== best.hits) return alternative.hits > best.hits ? alternative : best;
+        return Number(alternative.hitRate) > Number(best.hitRate) ? alternative : best;
+      }, null);
+    const averageWeightedAlternativeHits =
+      weightedAlternatives.length > 0
+        ? weightedAlternatives.reduce((sum, alternative) => sum + alternative.hits, 0) / weightedAlternatives.length
+        : 0;
+    const averageWeightedAlternativeHitRate =
+      weightedAlternatives.length > 0
+        ? weightedAlternatives.reduce((sum, alternative) => sum + Number(alternative.hitRate), 0) /
+          weightedAlternatives.length
+        : 0;
 
     return {
       game: config.label,
@@ -241,12 +295,20 @@ function buildPredictionAudit({ previousPredictions, rowsByGame, updateSummary, 
       comparedDrawNumber: comparedRow.draw_number,
       comparedDrawWasLatestOfNewData: true,
       newDrawsAfterPreviousLatest: update.newDrawsAfterPreviousLatest,
-      predictedNumbers: predictedNumbers.join("-"),
+      predictedNumbers: primaryAudit.predictedNumbers,
       actualNumbers: actualNumbers.join("-"),
-      matchedNumbers: matchedNumbers.join("-"),
-      hits: matchedNumbers.length,
-      pickCount: predictedNumbers.length,
-      hitRate: hitRate.toFixed(4),
+      matchedNumbers: primaryAudit.matchedNumbers,
+      hits: primaryAudit.hits,
+      pickCount: primaryAudit.pickCount,
+      hitRate: primaryAudit.hitRate,
+      weightedAlternatives,
+      weightedAlternativeCount: weightedAlternatives.length,
+      bestWeightedAlternativeHits: bestWeightedAlternative?.hits ?? 0,
+      bestWeightedAlternativeHitRate: bestWeightedAlternative?.hitRate ?? "0.0000",
+      bestWeightedAlternativeNumbers: bestWeightedAlternative?.predictedNumbers ?? "",
+      bestWeightedAlternativeMatchedNumbers: bestWeightedAlternative?.matchedNumbers ?? "",
+      averageWeightedAlternativeHits: averageWeightedAlternativeHits.toFixed(2),
+      averageWeightedAlternativeHitRate: averageWeightedAlternativeHitRate.toFixed(4),
     };
   }).filter((audit) => configsByLabel.has(audit.game));
 }
@@ -733,6 +795,32 @@ function scorePatternFeatures(features, profile, pickCount) {
   );
 }
 
+function scoreCrowdAvoidance(numbers, features, config) {
+  const nonBirthdayCount = numbers.filter((number) => number > 31).length;
+  const lowMonthCount = numbers.filter((number) => number <= 12).length;
+  const roundNumberCount = numbers.filter((number) => number % 5 === 0 || number % 10 === 0).length;
+  const targetNonBirthday = Math.min(
+    config.pickCount,
+    Math.max(config.minimumNonBirthdayNumbers + 1, Math.round(config.pickCount * 0.45)),
+  );
+
+  const scores = {
+    nonBirthday: Math.min(1, nonBirthdayCount / Math.max(1, targetNonBirthday)),
+    lowMonth: maxScore(lowMonthCount, 2, 1),
+    consecutive: maxScore(features.consecutivePairs, 1, 1),
+    sameTail: maxScore(features.maxSameTail, 2, 1),
+    round: maxScore(roundNumberCount, 2, 1),
+  };
+
+  return (
+    0.42 * scores.nonBirthday +
+    0.18 * scores.lowMonth +
+    0.16 * scores.consecutive +
+    0.12 * scores.sameTail +
+    0.12 * scores.round
+  );
+}
+
 function createRankLookup(ranked) {
   return new Map(ranked.map((entry) => [entry.number, entry]));
 }
@@ -747,16 +835,21 @@ function scoreCandidate(numbers, rankedLookup, patternProfile, config) {
     patternProfile.latestNumbers,
   );
   const patternScore = scorePatternFeatures(patternFeatures, patternProfile, config.pickCount);
-  const combinationScoreWeights = config.combinationScoreWeights ?? defaultCombinationScoreWeights;
+  const crowdAvoidanceScore = scoreCrowdAvoidance(numbers, patternFeatures, config);
+  const combinationScoreWeights = normalizeCombinationScoreWeights(
+    config.combinationScoreWeights ?? defaultCombinationScoreWeights,
+  );
   const combinedScore =
     combinationScoreWeights.numberScore * numberScore +
-    combinationScoreWeights.patternProfile * patternScore;
+    combinationScoreWeights.patternProfile * patternScore +
+    combinationScoreWeights.crowdAvoidance * crowdAvoidanceScore;
 
   return {
     numbers: [...numbers].sort((left, right) => left - right),
     numberScore,
     patternFeatures,
     patternScore,
+    crowdAvoidanceScore,
     combinedScore,
   };
 }
@@ -821,6 +914,7 @@ function formatPatternProfile(candidate, profile) {
     `consecutive=${features.consecutivePairs}(max${profile.maxConsecutivePairs})`,
     `same_tail=${features.maxSameTail}(max${profile.maxSameTail})`,
     `repeat_last=${features.recentRepeatCount}(max${profile.maxRecentRepeats})`,
+    `crowd=${candidate.crowdAvoidanceScore.toFixed(2)}`,
   ].join(";");
 }
 
@@ -1016,11 +1110,12 @@ function predictionForGame(rows, config, predictionGeneratedAt) {
       : "composite_weighted_v3_pattern_profile",
     trained_config_generated_at: config.trainedConfigGeneratedAt ?? "",
     half_life_draws: config.halfLife,
-    model_weights: `recent_activity=${config.scoreWeights.recentActivity};long_term_hotness=${config.scoreWeights.longTermHotness};cold_rebound=${config.scoreWeights.coldRebound};number_score=${config.combinationScoreWeights.numberScore};pattern_profile=${config.combinationScoreWeights.patternProfile}`,
+    model_weights: `recent_activity=${config.scoreWeights.recentActivity};long_term_hotness=${config.scoreWeights.longTermHotness};cold_rebound=${config.scoreWeights.coldRebound};number_score=${config.combinationScoreWeights.numberScore};pattern_profile=${config.combinationScoreWeights.patternProfile};crowd_avoidance=${config.combinationScoreWeights.crowdAvoidance}`,
     birthday_sharing_rule: `minimum_${config.minimumNonBirthdayNumbers}_numbers_above_31`,
     non_birthday_count: nonBirthdayCount,
     pool_size: poolSize,
     pattern_score: selectedCandidate.patternScore.toFixed(4),
+    crowd_avoidance_score: selectedCandidate.crowdAvoidanceScore.toFixed(4),
     pattern_profile: formatPatternProfile(selectedCandidate, patternProfile),
     picks: picks.join("-"),
     weighted_random_alternatives: weightedRandomAlternatives
@@ -1113,6 +1208,7 @@ const predictionColumns = [
   "non_birthday_count",
   "pool_size",
   "pattern_score",
+  "crowd_avoidance_score",
   "pattern_profile",
   "picks",
   "weighted_random_alternatives",

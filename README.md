@@ -39,7 +39,7 @@ Refresh official data online and generate new predictions:
 node .\refresh_and_predict.mjs
 ```
 
-When new official draw data is found, this command compares the previous stable prediction against the latest newly added draw, reports hits and hit rate, retrains weights, then generates the next prediction. If no new draw data is found, it skips comparison/retraining and only refreshes weighted random alternatives.
+When new official draw data is found, this command compares the previous stable prediction and previous weighted random alternatives against the latest newly added draw, reports hits and hit rate, retrains weights, then generates the next prediction. If no new draw data is found, it skips comparison/retraining and only refreshes weighted random alternatives.
 
 Recalculate predictions using local CSV files only:
 
@@ -76,6 +76,7 @@ The current prediction model is `composite_weighted_v3_pattern_profile`. It comb
 - Cold-number rebound: numbers absent for longer periods receive a mild recovery score.
 - Birthday-number avoidance: each pick keeps at least two `32+` numbers to reduce overlap with common birthday-based tickets.
 - Pattern profile scoring: combinations are scored against historical odd/even balance, low/high balance, sum range, consecutive pairs, same-tail concentration, and repeat count from the latest draw.
+- Crowd split avoidance: combinations with fewer date-heavy, low-month, round-number, and obvious-pattern traits receive a small extra score. This does not change draw odds, but it can reduce the risk of sharing a prize with common human-picked tickets.
 
 Default model weights:
 
@@ -88,6 +89,10 @@ cold_rebound=0.20
 The UI shows one stable best pick plus five weighted random alternatives. The stable pick is deterministic; alternatives are resampled on each recalculation while still using the same score weights and birthday-number rule.
 
 Each generated prediction includes a `prediction_generated_at` timestamp so old number sets are easy to identify.
+
+## Runtime Notes
+
+The one-click official refresh can take a while because it may download roughly 10 years of draw data and, when new draws are found, run a CPU-based random weight search. This project currently uses Node.js on the CPU, not GPU acceleration. Local-only recalculation is much faster because it skips official download and retraining.
 
 ## Data Files
 

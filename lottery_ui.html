@@ -44,7 +44,7 @@
     }
 
     .shell {
-      width: min(1160px, calc(100% - 36px));
+      width: min(1280px, calc(100% - 36px));
       margin: 0 auto;
       padding: 42px 0 54px;
     }
@@ -195,13 +195,16 @@
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 24px;
+      align-items: start;
     }
 
     .card {
       position: relative;
       overflow: hidden;
       padding: 28px;
-      min-height: 310px;
+      min-height: 0;
+      --game-accent: var(--coral);
+      --game-accent-2: #9f2f1d;
     }
 
     .card::before {
@@ -216,10 +219,42 @@
       transform: rotate(18deg);
     }
 
+    .card.lotto-max {
+      --game-accent: var(--coral);
+      --game-accent-2: #9f2f1d;
+    }
+
+    .card.lotto-649 {
+      --game-accent: var(--gold);
+      --game-accent-2: #9c6b18;
+    }
+
+    .card.empty { grid-column: 1 / -1; }
+
+    .card-header {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
     .card h2, .checks h2 {
       margin: 0 0 10px;
       font-size: 24px;
       letter-spacing: -0.03em;
+    }
+
+    .game-kicker {
+      display: inline-flex;
+      margin-bottom: 8px;
+      color: var(--game-accent-2);
+      font-size: 12px;
+      font-weight: 950;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
     }
 
     .section-gap { margin-top: 24px !important; }
@@ -230,12 +265,57 @@
       line-height: 1.6;
     }
 
+    .stat-grid {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+
+    .stat {
+      padding: 12px;
+      border: 1px solid rgba(22, 33, 29, 0.10);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.34);
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .stat strong {
+      display: block;
+      color: var(--ink);
+      font-size: 15px;
+    }
+
     .balls {
       display: flex;
       flex-wrap: wrap;
       gap: 12px;
       margin: 26px 0;
     }
+
+    .pick-block {
+      position: relative;
+      z-index: 1;
+      margin: 18px 0;
+      padding: 18px;
+      border: 1px solid rgba(22, 33, 29, 0.10);
+      border-radius: 24px;
+      background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.52), rgba(255, 255, 255, 0.20)),
+        radial-gradient(circle at top right, rgba(217, 159, 43, 0.18), transparent 16rem);
+    }
+
+    .card.lotto-max .pick-block {
+      background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.52), rgba(255, 255, 255, 0.20)),
+        radial-gradient(circle at top right, rgba(217, 95, 67, 0.20), transparent 16rem);
+    }
+
+    .pick-block .balls { margin: 14px 0 0; }
 
     .latest-result {
       position: relative;
@@ -266,7 +346,7 @@
       color: #fff;
       background:
         radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.45), transparent 18px),
-        linear-gradient(145deg, var(--coral), #9f2f1d);
+        linear-gradient(145deg, var(--game-accent), var(--game-accent-2));
       box-shadow: inset -9px -10px 18px rgba(60, 12, 5, 0.22), 0 10px 24px rgba(159, 47, 29, 0.22);
       font-size: 22px;
       font-weight: 950;
@@ -297,18 +377,6 @@
       box-shadow: inset -5px -6px 10px rgba(60, 12, 5, 0.16), 0 6px 14px rgba(159, 47, 29, 0.14);
     }
 
-    .card:nth-child(2) .ball {
-      background:
-        radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.48), transparent 18px),
-        linear-gradient(145deg, var(--gold), #9c6b18);
-    }
-
-    .card:nth-child(2) .ball.drawn {
-      background:
-        radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.42), transparent 15px),
-        linear-gradient(145deg, var(--green), var(--green-2));
-    }
-
     .top-list {
       position: relative;
       z-index: 1;
@@ -326,6 +394,23 @@
       color: var(--muted);
       font-size: 12px;
     }
+
+    .model-details {
+      position: relative;
+      z-index: 1;
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid rgba(22, 33, 29, 0.10);
+    }
+
+    .model-details summary {
+      cursor: pointer;
+      color: var(--green-2);
+      font-size: 14px;
+      font-weight: 950;
+    }
+
+    .model-details[open] summary { margin-bottom: 12px; }
 
     .alternative-list {
       position: relative;
@@ -397,7 +482,7 @@
     }
 
     @media (max-width: 860px) {
-      .hero, .grid, .check-grid { grid-template-columns: 1fr; }
+      .hero, .grid, .check-grid, .stat-grid { grid-template-columns: 1fr; }
       .shell { width: min(100% - 24px, 760px); padding-top: 20px; }
       .intro, .actions, .card, .checks { padding: 22px; }
       .ball { width: 52px; height: 52px; }
@@ -484,12 +569,21 @@
         predictionTime: U("9884 6D4B 751F 6210 65F6 95F4"),
         patternScore: U("5F62 6001 8BC4 5206"),
         patternProfile: U("5F62 6001"),
+        modelDetails: U("6A21 578B 7EC6 8282"),
+        crowdScore: U("907F 5F00 5E73 5206 5206 6570"),
+        leftPanel: U("5DE6 4FA7"),
+        rightPanel: U("53F3 4FA7"),
         trainedConfig: U("8BAD 7EC3 914D 7F6E"),
         trainingStatus: U("8BAD 7EC3 72B6 6001"),
         previousPick: U("4E0A 6B21 9884 6D4B"),
         latestActual: U("6700 65B0 5F00 5956"),
         hitRate: U("547D 4E2D 7387"),
         matchedNumbers: U("547D 4E2D 53F7 7801"),
+        mainPickAudit: U("4E3B 63A8 8350 547D 4E2D"),
+        weightedAlternativeAudit: U("52A0 6743 5907 9009 547D 4E2D"),
+        bestAlternative: U("6700 4F73 5907 9009"),
+        averageAlternative: U("5E73 5747 5907 9009"),
+        alternativeShort: U("5907 9009"),
         noNewDataAudit: U("6CA1 6709 65B0 589E 5F00 5956 FF0C 53EA 5237 65B0 5907 9009 9884 6D4B 3002"),
         noPreviousPrediction: U("6CA1 6709 4E0A 6B21 9884 6D4B 53EF 5BF9 6BD4 3002"),
         stablePick: U("4E3B 63A8 8350"),
@@ -551,12 +645,21 @@
         predictionTime: "Prediction time",
         patternScore: "Pattern score",
         patternProfile: "Pattern profile",
+        modelDetails: "Model details",
+        crowdScore: "Crowd split avoidance score",
+        leftPanel: "Left panel",
+        rightPanel: "Right panel",
         trainedConfig: "Trained config",
         trainingStatus: "Training status",
         previousPick: "Previous prediction",
         latestActual: "Latest actual draw",
         hitRate: "Hit rate",
         matchedNumbers: "Matched numbers",
+        mainPickAudit: "Main pick hits",
+        weightedAlternativeAudit: "Weighted alternative hits",
+        bestAlternative: "Best alternative",
+        averageAlternative: "Average alternative",
+        alternativeShort: "Alternative",
         noNewDataAudit: "No new draw data; only refreshed weighted random alternatives.",
         noPreviousPrediction: "No previous prediction was available for comparison.",
         stablePick: "Stable best pick",
@@ -661,13 +764,25 @@
         .join("");
     }
 
+    function gameSortValue(game) {
+      if (game === "Lotto Max") return 0;
+      if (game === "Lotto 649") return 1;
+      return 2;
+    }
+
+    function gameClass(game) {
+      return game === "Lotto Max" ? "lotto-max" : "lotto-649";
+    }
+
     function renderPredictions(predictions) {
       if (!predictions || predictions.length === 0) {
         cards.innerHTML = `<div class="panel card empty">${t("noPredictions")}</div>`;
         return;
       }
 
-      cards.innerHTML = predictions.map((prediction) => {
+      cards.innerHTML = [...predictions].sort((left, right) =>
+        gameSortValue(left.game) - gameSortValue(right.game)
+      ).map((prediction) => {
         const balls = renderBalls(prediction.picks);
         const latestBalls = renderBalls(prediction.latest_winning_numbers, "drawn") || `<span class="chip">${t("unknown")}</span>`;
         const latestBonus = prediction.latest_bonus_number
@@ -682,16 +797,37 @@
           `)
           .join("");
         const predictionTime = formatDateTime(prediction.prediction_generated_at || currentStatus?.generatedAt);
-        const trainedConfigTime = prediction.trained_config_generated_at
-          ? `<br>${t("trainedConfig")}: ${formatDateTime(prediction.trained_config_generated_at)}`
-          : "";
         const topList = parseTopList(prediction.top_12_weighted_numbers)
           .map((item) => `<span class="chip">${item}</span>`)
           .join("");
+        const trainedConfigTime = prediction.trained_config_generated_at
+          ? `<br>${t("trainedConfig")}: ${formatDateTime(prediction.trained_config_generated_at)}`
+          : "";
+        const crowdScore = prediction.crowd_avoidance_score
+          ? `<br>${t("crowdScore")}: ${prediction.crowd_avoidance_score}`
+          : "";
 
         return `
-          <article class="panel card">
-            <h2>${prediction.game}</h2>
+          <article class="panel card ${gameClass(prediction.game)}">
+            <div class="card-header">
+              <div>
+                <span class="game-kicker">${prediction.game === "Lotto Max" ? t("leftPanel") : t("rightPanel")}</span>
+                <h2>${prediction.game}</h2>
+              </div>
+              <span class="chip">${t("predictionTime")}: ${predictionTime}</span>
+            </div>
+
+            <div class="stat-grid">
+              <div class="stat">
+                <strong>${prediction.estimated_next_draw_date || t("unknown")}</strong>
+                ${t("nextDraw")}
+              </div>
+              <div class="stat">
+                <strong>${prediction.latest_draw_date || prediction.prediction_for_next_draw_after || t("unknown")}</strong>
+                ${t("latestDraw")} #${prediction.latest_draw_number || t("unknown")}
+              </div>
+            </div>
+
             <div class="latest-result">
               <div class="meta">
                 <strong>${t("latestWinningNumbers")}</strong><br>
@@ -701,17 +837,12 @@
               <div class="balls">${latestBalls}</div>
               ${latestBonus}
             </div>
-            <div class="meta">
-              ${t("nextDraw")}: ${prediction.estimated_next_draw_date || t("unknown")}<br>
-              ${t("predictionTime")}: ${predictionTime}<br>
-              ${t("halfLife")}: ${prediction.half_life_draws} ${t("drawUnit")}<br>
-              ${t("patternScore")}: ${prediction.pattern_score || t("unknown")}${trainedConfigTime}<br>
-              ${t("model")}: ${prediction.model || t("unknown")},
-              ${t("nonBirthdayCount")}: ${prediction.non_birthday_count ?? t("unknown")}
+
+            <div class="pick-block">
+              <div class="meta"><strong>${t("stablePick")}</strong> / ${t("predictionNumbers")}</div>
+              <div class="balls">${balls}</div>
             </div>
-            ${prediction.pattern_profile ? `<div class="chip">${t("patternProfile")}: ${prediction.pattern_profile}</div>` : ""}
-            <div class="meta"><strong>${t("stablePick")}</strong> / ${t("predictionNumbers")}</div>
-            <div class="balls">${balls}</div>
+
             ${alternatives ? `
               <div class="meta">
                 <strong>${t("weightedAlternatives")}</strong>
@@ -719,8 +850,18 @@
               </div>
               <div class="alternative-list">${alternatives}</div>
             ` : ""}
-            <div class="meta">${t("topCandidates")}</div>
-            <div class="top-list">${topList}</div>
+
+            <details class="model-details">
+              <summary>${t("modelDetails")}</summary>
+              <div class="meta">
+                ${t("halfLife")}: ${prediction.half_life_draws} ${t("drawUnit")}<br>
+                ${t("patternScore")}: ${prediction.pattern_score || t("unknown")}${crowdScore}${trainedConfigTime}<br>
+                ${t("model")}: ${prediction.model || t("unknown")},
+                ${t("nonBirthdayCount")}: ${prediction.non_birthday_count ?? t("unknown")}
+              </div>
+              ${prediction.pattern_profile ? `<div class="chip">${t("patternProfile")}: ${prediction.pattern_profile}</div>` : ""}
+              ${topList ? `<div class="meta">${t("topCandidates")}</div><div class="top-list">${topList}</div>` : ""}
+            </details>
           </article>
         `;
       }).join("");
@@ -732,7 +873,9 @@
         return;
       }
 
-      updates.innerHTML = reports.map((report) => {
+      updates.innerHTML = [...reports].sort((left, right) =>
+        gameSortValue(left.game) - gameSortValue(right.game)
+      ).map((report) => {
         const isNew = Number(report.newDrawsAfterPreviousLatest) > 0;
         const statusClass = isNew ? "ok" : "warn";
         const statusText = report.mode === "local_reprediction"
@@ -774,7 +917,7 @@
         return;
       }
 
-      for (const report of reports) {
+      for (const report of [...reports].sort((left, right) => gameSortValue(left.game) - gameSortValue(right.game))) {
         if (report.status === "no_new_data") {
           cards.push(`
             <div class="check">
@@ -800,15 +943,40 @@
         const hits = Number(report.hits || 0);
         const hitClass = hits > 0 ? "ok" : "warn";
         const hitRate = `${(Number(report.hitRate || 0) * 100).toFixed(1)}%`;
+        const alternativeAudits = Array.isArray(report.weightedAlternatives)
+          ? report.weightedAlternatives
+          : [];
+        const alternativeSummary = alternativeAudits.length > 0
+          ? `
+            <br><strong>${t("weightedAlternativeAudit")}</strong><br>
+            ${t("bestAlternative")}: <span class="${Number(report.bestWeightedAlternativeHits || 0) > 0 ? "ok" : "warn"}">
+              ${report.bestWeightedAlternativeHits || 0}/${alternativeAudits[0]?.pickCount || "?"}
+            </span>,
+            ${t("hitRate")}: ${(Number(report.bestWeightedAlternativeHitRate || 0) * 100).toFixed(1)}%<br>
+            ${t("averageAlternative")}: ${report.averageWeightedAlternativeHits || "0.00"}/${alternativeAudits[0]?.pickCount || "?"},
+            ${t("hitRate")}: ${(Number(report.averageWeightedAlternativeHitRate || 0) * 100).toFixed(1)}%
+            <div class="top-list">
+              ${alternativeAudits.map((alternative) => `
+                <span class="chip">
+                  ${t("alternativeShort")} #${alternative.index}: ${alternative.hits}/${alternative.pickCount}
+                  (${(Number(alternative.hitRate || 0) * 100).toFixed(1)}%)
+                  ${alternative.matchedNumbers ? ` ${t("matchedNumbers")}: ${alternative.matchedNumbers}` : ""}
+                </span>
+              `).join("")}
+            </div>
+          `
+          : "";
         cards.push(`
           <div class="check">
             <strong>${report.game}</strong><br>
             ${t("latestActual")}: ${report.comparedDrawDate} / ${report.comparedDrawNumber}<br>
             ${t("previousPick")}: ${report.predictedNumbers || t("unknown")}<br>
             ${t("latestWinningNumbers")}: ${report.actualNumbers || t("unknown")}<br>
-            ${t("status")}: <span class="${hitClass}">${hits}/${report.pickCount || "?"}</span>,
+            <strong>${t("mainPickAudit")}</strong>:
+            <span class="${hitClass}">${hits}/${report.pickCount || "?"}</span>,
             ${t("hitRate")}: ${hitRate}<br>
             ${t("matchedNumbers")}: ${report.matchedNumbers || t("none")}
+            ${alternativeSummary}
           </div>
         `);
       }
@@ -822,7 +990,9 @@
         return;
       }
 
-      checks.innerHTML = reports.map((report) => {
+      checks.innerHTML = [...reports].sort((left, right) =>
+        gameSortValue(left.game) - gameSortValue(right.game)
+      ).map((report) => {
         const statusClass = report.status === "ok" ? "ok" : "warn";
         return `
           <div class="check">

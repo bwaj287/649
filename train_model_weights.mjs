@@ -27,9 +27,23 @@ const halfLifeCandidates = (args.halfLives ?? "13,20,26,39,52,78,104,156,208,312
   .filter((value) => Number.isFinite(value) && value > 0);
 
 const defaultCombinationScoreWeights = {
-  numberScore: 0.72,
-  patternProfile: 0.28,
+  numberScore: 0.66,
+  patternProfile: 0.24,
+  crowdAvoidance: 0.1,
 };
+
+function normalizeCombinationScoreWeights(weights) {
+  const numberScore = Number(weights.numberScore ?? defaultCombinationScoreWeights.numberScore);
+  const patternProfile = Number(weights.patternProfile ?? defaultCombinationScoreWeights.patternProfile);
+  const crowdAvoidance = Number(weights.crowdAvoidance ?? defaultCombinationScoreWeights.crowdAvoidance);
+  const total = Math.max(0.000001, numberScore + patternProfile + crowdAvoidance);
+
+  return {
+    numberScore: numberScore / total,
+    patternProfile: patternProfile / total,
+    crowdAvoidance: crowdAvoidance / total,
+  };
+}
 
 const gameConfigs = [
   {
@@ -379,6 +393,32 @@ function scorePatternFeatures(features, profile, pickCount) {
   );
 }
 
+function scoreCrowdAvoidance(numbers, features, config, minimumNonBirthdayNumbers) {
+  const nonBirthdayCount = numbers.filter((number) => number > 31).length;
+  const lowMonthCount = numbers.filter((number) => number <= 12).length;
+  const roundNumberCount = numbers.filter((number) => number % 5 === 0 || number % 10 === 0).length;
+  const targetNonBirthday = Math.min(
+    config.pickCount,
+    Math.max(minimumNonBirthdayNumbers + 1, Math.round(config.pickCount * 0.45)),
+  );
+
+  const scores = {
+    nonBirthday: Math.min(1, nonBirthdayCount / Math.max(1, targetNonBirthday)),
+    lowMonth: maxScore(lowMonthCount, 2, 1),
+    consecutive: maxScore(features.consecutivePairs, 1, 1),
+    sameTail: maxScore(features.maxSameTail, 2, 1),
+    round: maxScore(roundNumberCount, 2, 1),
+  };
+
+  return (
+    0.42 * scores.nonBirthday +
+    0.18 * scores.lowMonth +
+    0.16 * scores.consecutive +
+    0.12 * scores.sameTail +
+    0.12 * scores.round
+  );
+}
+
 function createRankLookup(ranked) {
   return new Map(ranked.map((entry) => [entry.number, entry]));
 }
@@ -393,14 +433,23 @@ function scoreCandidate(numbers, rankedLookup, patternProfile, config, candidate
     patternProfile.latestNumbers,
   );
   const patternScore = scorePatternFeatures(patternFeatures, patternProfile, config.pickCount);
+  const crowdAvoidanceScore = scoreCrowdAvoidance(
+    numbers,
+    patternFeatures,
+    config,
+    candidate.minimumNonBirthdayNumbers,
+  );
+  const combinationScoreWeights = normalizeCombinationScoreWeights(candidate.combinationScoreWeights);
   const combinedScore =
-    candidate.combinationScoreWeights.numberScore * numberScore +
-    candidate.combinationScoreWeights.patternProfile * patternScore;
+    combinationScoreWeights.numberScore * numberScore +
+    combinationScoreWeights.patternProfile * patternScore +
+    combinationScoreWeights.crowdAvoidance * crowdAvoidanceScore;
 
   return {
     numbers: [...numbers].sort((left, right) => left - right),
     numberScore,
     patternScore,
+    crowdAvoidanceScore,
     combinedScore,
   };
 }
@@ -622,7 +671,7 @@ function makeCandidate(id, config, values) {
     halfLife: values.halfLife,
     minimumNonBirthdayNumbers: values.minimumNonBirthdayNumbers,
     scoreWeights: values.scoreWeights,
-    combinationScoreWeights: values.combinationScoreWeights,
+    combinationScoreWeights: normalizeCombinationScoreWeights(values.combinationScoreWeights),
   };
 }
 
@@ -642,7 +691,8 @@ function generateCandidates(config) {
     const recent = 0.15 + rng() * 0.65;
     const hot = 0.10 + rng() * 0.55;
     const cold = 0.05 + rng() * 0.35;
-    const patternProfile = 0.12 + rng() * 0.42;
+    const patternProfile = 0.12 + rng() * 0.36;
+    const crowdAvoidance = 0.04 + rng() * 0.18;
     const minimumNonBirthdayNumbers = rng() < 0.72 ? 2 : 3;
     candidates.push(
       makeCandidate(`trial_${String(index + 1).padStart(4, "0")}`, config, {
@@ -650,8 +700,9 @@ function generateCandidates(config) {
         minimumNonBirthdayNumbers,
         scoreWeights: normalizeWeights(recent, hot, cold),
         combinationScoreWeights: {
-          numberScore: 1 - patternProfile,
+          numberScore: 1 - patternProfile - crowdAvoidance,
           patternProfile,
+          crowdAvoidance,
         },
       }),
     );
@@ -699,6 +750,7 @@ async function trainGame(config) {
     cold_rebound: Number(round(candidate.scoreWeights.coldRebound)),
     number_score: Number(round(candidate.combinationScoreWeights.numberScore)),
     pattern_profile: Number(round(candidate.combinationScoreWeights.patternProfile)),
+    crowd_avoidance: Number(round(candidate.combinationScoreWeights.crowdAvoidance)),
     validation_objective_score: validation.objective_score,
     validation_avg_hits_per_draw: validation.avg_hits_per_draw,
     validation_lift_avg_hits_vs_random: validation.lift_avg_hits_vs_random,
@@ -738,7 +790,7 @@ const trainedConfig = {
   generatedAt,
   model: "composite_weighted_v3_pattern_profile_trained",
   trainingMethod: "random_weight_search_holdout",
-  objective: "avg_hits + 0.65*rate>=2 + 2.5*rate>=3 + 8*rate>=4 on validation split",
+  objective: "avg_hits + 0.65*rate>=2 + 2.5*rate>=3 + 8*rate>=4 on validation split; combinations include pattern and crowd-sharing avoidance scores",
   splits: {
     validationStart,
     testStart,
@@ -792,6 +844,7 @@ await fs.writeFile(
     "cold_rebound",
     "number_score",
     "pattern_profile",
+    "crowd_avoidance",
     "validation_objective_score",
     "validation_avg_hits_per_draw",
     "validation_lift_avg_hits_vs_random",
