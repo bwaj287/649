@@ -219,12 +219,14 @@
       transform: rotate(18deg);
     }
 
-    .card.lotto-max {
+    .card.lotto-max,
+    .check.lotto-max {
       --game-accent: var(--coral);
       --game-accent-2: #9f2f1d;
     }
 
-    .card.lotto-649 {
+    .card.lotto-649,
+    .check.lotto-649 {
       --game-accent: var(--gold);
       --game-accent-2: #9c6b18;
     }
@@ -459,6 +461,8 @@
     }
 
     .check strong { color: var(--ink); font-size: 16px; }
+    .check.full-span { grid-column: 1 / -1; }
+    .check.game-audit { border-left: 5px solid var(--game-accent); }
     .ok { color: var(--green); font-weight: 900; }
     .warn { color: var(--coral); font-weight: 900; }
 
@@ -902,7 +906,7 @@
 
       if (trainingRun) {
         cards.push(`
-          <div class="check">
+          <div class="check full-span">
             <strong>${t("trainingStatus")}</strong><br>
             ${t("status")}: <span class="${trainingRun.status === "trained" ? "ok" : "warn"}">${trainingRun.status}</span><br>
             ${trainingRun.reason ? `${trainingRun.reason}<br>` : ""}
@@ -912,15 +916,17 @@
       }
 
       if (!reports || reports.length === 0) {
-        cards.push(`<div class="check">${t("noAudit")}</div>`);
+        cards.push(`<div class="check full-span">${t("noAudit")}</div>`);
         audits.innerHTML = cards.join("");
         return;
       }
 
       for (const report of [...reports].sort((left, right) => gameSortValue(left.game) - gameSortValue(right.game))) {
+        const sideLabel = report.game === "Lotto Max" ? t("leftPanel") : t("rightPanel");
         if (report.status === "no_new_data") {
           cards.push(`
-            <div class="check">
+            <div class="check game-audit ${gameClass(report.game)}">
+              <span class="game-kicker">${sideLabel}</span><br>
               <strong>${report.game}</strong><br>
               ${t("status")}: <span class="warn">${report.status}</span><br>
               ${t("noNewDataAudit")}
@@ -931,7 +937,8 @@
 
         if (report.status === "missing_previous_prediction") {
           cards.push(`
-            <div class="check">
+            <div class="check game-audit ${gameClass(report.game)}">
+              <span class="game-kicker">${sideLabel}</span><br>
               <strong>${report.game}</strong><br>
               ${t("latestActual")}: ${report.comparedDrawDate || t("unknown")} / ${report.comparedDrawNumber || t("unknown")}<br>
               ${t("noPreviousPrediction")}
@@ -967,7 +974,8 @@
           `
           : "";
         cards.push(`
-          <div class="check">
+          <div class="check game-audit ${gameClass(report.game)}">
+            <span class="game-kicker">${sideLabel}</span><br>
             <strong>${report.game}</strong><br>
             ${t("latestActual")}: ${report.comparedDrawDate} / ${report.comparedDrawNumber}<br>
             ${t("previousPick")}: ${report.predictedNumbers || t("unknown")}<br>
