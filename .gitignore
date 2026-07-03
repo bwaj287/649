@@ -1,6 +1,10 @@
 # Runtime logs
 launcher.log
 
+# Local Python GPU environment
+.venv/
+__pycache__/
+
 # Generated prediction/report outputs
 latest_weighted_predictions.csv
 latest_weighted_predictions.json

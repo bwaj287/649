@@ -55,7 +55,29 @@ node .\refresh_and_predict.mjs --endDate=2026-06-21
 
 ## Train Weights
 
-Run a local random weight search with train/validation/test splits:
+The refresh workflow now uses a PyTorch deep-learning trainer by default when new official data is found. The trainer uses the earlier rule set as neural-network features and post-processing constraints: recent activity, long-term hotness, cold rebound, birthday/low-month avoidance, round-number avoidance, historical pattern profile, and crowd split avoidance.
+
+GPU setup for this machine lives in the local `.venv/` folder:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install torch --index-url https://download.pytorch.org/whl/cu128
+.\.venv\Scripts\python.exe -m pip install numpy
+```
+
+Verify GPU access:
+
+```powershell
+.\.venv\Scripts\python.exe -c "import torch; print(torch.__version__, torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+```
+
+Run the deep-learning trainer manually:
+
+```powershell
+.\.venv\Scripts\python.exe .\train_deep_lottery_model.py
+```
+
+Run the older local random weight search with train/validation/test splits:
 
 ```powershell
 node .\train_model_weights.mjs
@@ -67,6 +89,12 @@ The trainer writes `trained_model_config.json` and `train_results/`. Future pred
 node .\refresh_and_predict.mjs --useTrainedModelConfig=false
 ```
 
+Use the older random-search trainer during refresh instead of the deep-learning trainer:
+
+```powershell
+node .\refresh_and_predict.mjs --trainer=weights
+```
+
 ## Current Model
 
 The current prediction model is `composite_weighted_v3_pattern_profile`. It combines:
@@ -74,6 +102,7 @@ The current prediction model is `composite_weighted_v3_pattern_profile`. It comb
 - Recent activity: newer winning numbers receive higher exponentially decayed weight.
 - Long-term hotness: numbers with historically above-expected frequency receive extra score.
 - Cold-number rebound: numbers absent for longer periods receive a mild recovery score.
+- Deep-learning probability: when `trained_model_config.json` was produced by `train_deep_lottery_model.py`, each number receives a PyTorch neural-network probability trained on rolling historical windows.
 - Birthday-number avoidance: each pick keeps at least two `32+` numbers to reduce overlap with common birthday-based tickets.
 - Pattern profile scoring: combinations are scored against historical odd/even balance, low/high balance, sum range, consecutive pairs, same-tail concentration, and repeat count from the latest draw.
 - Crowd split avoidance: combinations with fewer date-heavy, low-month, round-number, and obvious-pattern traits receive a small extra score. This does not change draw odds, but it can reduce the risk of sharing a prize with common human-picked tickets.

@@ -17,6 +17,7 @@ const outputDir = args.outputDir ?? rootDir;
 const yearsBack = Number(args.yearsBack ?? 10);
 const skipFetch = args.skipFetch === "true";
 const trainOnNewData = args.trainOnNewData !== "false";
+const trainer = args.trainer ?? "deep";
 const modelConfigPath = args.modelConfig ?? path.join(rootDir, "trained_model_config.json");
 const useTrainedModelConfig = args.useTrainedModelConfig !== "false";
 const lotto649HalfLife = Number(args.lotto649HalfLife ?? 26);
@@ -48,15 +49,32 @@ function applyTrainedOverrides(config) {
     minimumNonBirthdayNumbers: Number(
       override.minimumNonBirthdayNumbers ?? config.minimumNonBirthdayNumbers,
     ),
-    scoreWeights: {
+    scoreWeights: normalizeScoreWeights({
       ...config.scoreWeights,
       ...(override.scoreWeights ?? {}),
-    },
+    }),
     combinationScoreWeights: normalizeCombinationScoreWeights({
       ...config.combinationScoreWeights,
       ...(override.combinationScoreWeights ?? {}),
     }),
+    deepLearning: override.deepLearning ?? null,
     trainedConfigGeneratedAt: trainedModelConfig.generatedAt ?? "",
+    trainedModelName: trainedModelConfig.model ?? "",
+  };
+}
+
+function normalizeScoreWeights(weights) {
+  const recentActivity = Number(weights.recentActivity ?? 0);
+  const longTermHotness = Number(weights.longTermHotness ?? 0);
+  const coldRebound = Number(weights.coldRebound ?? 0);
+  const deepLearning = Number(weights.deepLearning ?? 0);
+  const total = Math.max(0.000001, recentActivity + longTermHotness + coldRebound + deepLearning);
+
+  return {
+    recentActivity: recentActivity / total,
+    longTermHotness: longTermHotness / total,
+    coldRebound: coldRebound / total,
+    deepLearning: deepLearning / total,
   };
 }
 
@@ -357,9 +375,9 @@ function getScheduledDates(startDateKey, endDateKey, gameKey) {
   return dates;
 }
 
-function runNode(scriptPath, scriptArgs) {
+function runCommand(command, commandArgs, label = path.basename(command)) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [scriptPath, ...scriptArgs], {
+    const child = spawn(command, commandArgs, {
       cwd: rootDir,
       windowsHide: true,
     });
@@ -375,12 +393,26 @@ function runNode(scriptPath, scriptArgs) {
     child.on("error", reject);
     child.on("close", (code) => {
       if (code !== 0) {
-        reject(new Error(`${path.basename(scriptPath)} failed with code ${code}\n${stderr}`));
+        reject(new Error(`${label} failed with code ${code}\n${stderr}`));
         return;
       }
       resolve({ stdout, stderr });
     });
   });
+}
+
+function runNode(scriptPath, scriptArgs) {
+  return runCommand(process.execPath, [scriptPath, ...scriptArgs], path.basename(scriptPath));
+}
+
+function pythonExecutable() {
+  const localPython = path.join(rootDir, ".venv", "Scripts", "python.exe");
+  if (fsSync.existsSync(localPython)) return localPython;
+  return args.python ?? "python";
+}
+
+function runPython(scriptPath, scriptArgs) {
+  return runCommand(pythonExecutable(), [scriptPath, ...scriptArgs], path.basename(scriptPath));
 }
 
 function parseLastJson(text) {
@@ -496,25 +528,61 @@ async function trainModelIfNeeded(hasNewData) {
     return { status: "skipped", reason: "disabled" };
   }
 
-  const trainScript = path.join(rootDir, "train_model_weights.mjs");
+  const useDeepTrainer = trainer !== "weights";
+  const trainScript = useDeepTrainer
+    ? path.join(rootDir, "train_deep_lottery_model.py")
+    : path.join(rootDir, "train_model_weights.mjs");
   const trainArgs = [`--rootDir=${outputDir}`, `--configOutput=${modelConfigPath}`];
-  if (args.trainTrials) {
-    trainArgs.push(`--trials=${args.trainTrials}`);
-  }
-  if (args.trainSamplesPerDraw) {
-    trainArgs.push(`--samplesPerDraw=${args.trainSamplesPerDraw}`);
-  }
-  if (args.trainSeed) {
-    trainArgs.push(`--seed=${args.trainSeed}`);
+
+  if (useDeepTrainer) {
+    if (args.trainEpochs) {
+      trainArgs.push(`--epochs=${args.trainEpochs}`);
+    }
+    if (args.trainBatchSize) {
+      trainArgs.push(`--batchSize=${args.trainBatchSize}`);
+    }
+    if (args.trainDevice) {
+      trainArgs.push(`--device=${args.trainDevice}`);
+    }
+    if (args.trainSeed) {
+      trainArgs.push(`--seed=${args.trainSeed}`);
+    }
+  } else {
+    if (args.trainTrials) {
+      trainArgs.push(`--trials=${args.trainTrials}`);
+    }
+    if (args.trainSamplesPerDraw) {
+      trainArgs.push(`--samplesPerDraw=${args.trainSamplesPerDraw}`);
+    }
+    if (args.trainSeed) {
+      trainArgs.push(`--seed=${args.trainSeed}`);
+    }
   }
 
-  const result = await runNode(trainScript, trainArgs);
+  const result = useDeepTrainer
+    ? await runPython(trainScript, trainArgs)
+    : await runNode(trainScript, trainArgs);
   const summary = parseLastJson(result.stdout);
+  if (summary.status && summary.status !== "trained") {
+    return {
+      status: "skipped",
+      trainer: useDeepTrainer ? "deep" : "weights",
+      reason: summary.status,
+      dependency: summary.dependency ?? "",
+      message: summary.message ?? "",
+    };
+  }
+
   trainedModelConfig = loadTrainedModelConfig();
   gameConfigs = buildGameConfigs();
 
   return {
     status: "trained",
+    trainer: useDeepTrainer ? "deep" : "weights",
+    model: summary.model ?? "",
+    device: summary.device ?? "",
+    cudaAvailable: summary.cudaAvailable ?? false,
+    cudaDeviceName: summary.cudaDeviceName ?? "",
     generatedAt: summary.generatedAt,
     summaryPath: summary.summaryPath,
     configOutputPath: summary.configOutputPath,
@@ -595,6 +663,8 @@ function createNumberStats(poolSize) {
 function scoreCompositeWeighted(rows, config, poolSize) {
   const stats = createNumberStats(poolSize);
   const latestIndex = rows.length - 1;
+  const scoreWeights = normalizeScoreWeights(config.scoreWeights ?? {});
+  const deepProbabilities = config.deepLearning?.probabilities ?? {};
 
   rows.forEach((row, rowIndex) => {
     const age = latestIndex - rowIndex;
@@ -632,6 +702,7 @@ function scoreCompositeWeighted(rows, config, poolSize) {
       longRatio,
       coldAge,
       coldRatio,
+      deepLearningRaw: Number(deepProbabilities[String(entry.number)] ?? 0),
       isBirthdayNumber: entry.number <= 31,
     };
   });
@@ -639,12 +710,14 @@ function scoreCompositeWeighted(rows, config, poolSize) {
   normalizeMetric(entries, "recentRatio", "recentActivityScore");
   normalizeMetric(entries, "longRatio", "longTermHotnessScore");
   normalizeMetric(entries, "coldRatio", "coldReboundScore");
+  normalizeMetric(entries, "deepLearningRaw", "deepLearningScore");
 
   for (const entry of entries) {
     const baseScore =
-      config.scoreWeights.recentActivity * entry.recentActivityScore +
-      config.scoreWeights.longTermHotness * entry.longTermHotnessScore +
-      config.scoreWeights.coldRebound * entry.coldReboundScore;
+      scoreWeights.recentActivity * entry.recentActivityScore +
+      scoreWeights.longTermHotness * entry.longTermHotnessScore +
+      scoreWeights.coldRebound * entry.coldReboundScore +
+      scoreWeights.deepLearning * entry.deepLearningScore;
     const sharingPenalty = entry.isBirthdayNumber ? 0.97 : 1;
     entry.score = baseScore * sharingPenalty;
   }
@@ -1095,6 +1168,7 @@ function predictionForGame(rows, config, predictionGeneratedAt) {
   );
   const nonBirthdayCount = picks.filter((number) => number > 31).length;
   const latestWinningNumbers = getMainNumbers(latestRow, config).join("-");
+  const scoreWeights = normalizeScoreWeights(config.scoreWeights ?? {});
 
   return {
     game: config.label,
@@ -1105,12 +1179,16 @@ function predictionForGame(rows, config, predictionGeneratedAt) {
     latest_draw_number: latestRow.draw_number,
     latest_winning_numbers: latestWinningNumbers,
     latest_bonus_number: latestRow.bonus_number ?? "",
-    model: config.trainedConfigGeneratedAt
+    model: config.trainedModelName || (config.trainedConfigGeneratedAt
       ? "composite_weighted_v3_pattern_profile_trained"
-      : "composite_weighted_v3_pattern_profile",
+      : "composite_weighted_v3_pattern_profile"),
     trained_config_generated_at: config.trainedConfigGeneratedAt ?? "",
+    deep_learning_device: config.deepLearning?.device ?? "",
+    deep_learning_validation: config.deepLearning?.validation
+      ? `avg_hits=${config.deepLearning.validation.avg_hits_per_draw};rate>=3=${config.deepLearning.validation.rate_at_least_3}`
+      : "",
     half_life_draws: config.halfLife,
-    model_weights: `recent_activity=${config.scoreWeights.recentActivity};long_term_hotness=${config.scoreWeights.longTermHotness};cold_rebound=${config.scoreWeights.coldRebound};number_score=${config.combinationScoreWeights.numberScore};pattern_profile=${config.combinationScoreWeights.patternProfile};crowd_avoidance=${config.combinationScoreWeights.crowdAvoidance}`,
+    model_weights: `recent_activity=${scoreWeights.recentActivity};long_term_hotness=${scoreWeights.longTermHotness};cold_rebound=${scoreWeights.coldRebound};deep_learning=${scoreWeights.deepLearning};number_score=${config.combinationScoreWeights.numberScore};pattern_profile=${config.combinationScoreWeights.patternProfile};crowd_avoidance=${config.combinationScoreWeights.crowdAvoidance}`,
     birthday_sharing_rule: `minimum_${config.minimumNonBirthdayNumbers}_numbers_above_31`,
     non_birthday_count: nonBirthdayCount,
     pool_size: poolSize,
@@ -1125,7 +1203,7 @@ function predictionForGame(rows, config, predictionGeneratedAt) {
       .slice(0, 12)
       .map(
         (entry) =>
-          `${entry.number}:${entry.score.toFixed(4)}(R${entry.recentActivityScore.toFixed(2)},H${entry.longTermHotnessScore.toFixed(2)},C${entry.coldReboundScore.toFixed(2)})`,
+          `${entry.number}:${entry.score.toFixed(4)}(R${entry.recentActivityScore.toFixed(2)},H${entry.longTermHotnessScore.toFixed(2)},C${entry.coldReboundScore.toFixed(2)},D${entry.deepLearningScore.toFixed(2)})`,
       )
       .join(";"),
   };
@@ -1202,6 +1280,8 @@ const predictionColumns = [
   "latest_bonus_number",
   "model",
   "trained_config_generated_at",
+  "deep_learning_device",
+  "deep_learning_validation",
   "half_life_draws",
   "model_weights",
   "birthday_sharing_rule",

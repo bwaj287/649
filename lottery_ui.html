@@ -574,6 +574,7 @@
         patternScore: U("5F62 6001 8BC4 5206"),
         patternProfile: U("5F62 6001"),
         modelDetails: U("6A21 578B 7EC6 8282"),
+        deepLearningDevice: U("6DF1 5EA6 5B66 4E60 8BBE 5907"),
         crowdScore: U("907F 5F00 5E73 5206 5206 6570"),
         leftPanel: U("5DE6 4FA7"),
         rightPanel: U("53F3 4FA7"),
@@ -650,6 +651,7 @@
         patternScore: "Pattern score",
         patternProfile: "Pattern profile",
         modelDetails: "Model details",
+        deepLearningDevice: "Deep learning device",
         crowdScore: "Crowd split avoidance score",
         leftPanel: "Left panel",
         rightPanel: "Right panel",
@@ -810,6 +812,9 @@
         const crowdScore = prediction.crowd_avoidance_score
           ? `<br>${t("crowdScore")}: ${prediction.crowd_avoidance_score}`
           : "";
+        const deepLearningDevice = prediction.deep_learning_device
+          ? `<br>${t("deepLearningDevice")}: ${prediction.deep_learning_device}`
+          : "";
 
         return `
           <article class="panel card ${gameClass(prediction.game)}">
@@ -859,7 +864,7 @@
               <summary>${t("modelDetails")}</summary>
               <div class="meta">
                 ${t("halfLife")}: ${prediction.half_life_draws} ${t("drawUnit")}<br>
-                ${t("patternScore")}: ${prediction.pattern_score || t("unknown")}${crowdScore}${trainedConfigTime}<br>
+                ${t("patternScore")}: ${prediction.pattern_score || t("unknown")}${crowdScore}${deepLearningDevice}${trainedConfigTime}<br>
                 ${t("model")}: ${prediction.model || t("unknown")},
                 ${t("nonBirthdayCount")}: ${prediction.non_birthday_count ?? t("unknown")}
               </div>
