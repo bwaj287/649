@@ -575,6 +575,9 @@
         patternProfile: U("5F62 6001"),
         modelDetails: U("6A21 578B 7EC6 8282"),
         deepLearningDevice: U("6DF1 5EA6 5B66 4E60 8BBE 5907"),
+        primarySelectionMode: U("4E3B 63A8 6A21 5F0F"),
+        stableBestReference: U("7A33 5B9A 6700 4F18 53C2 8003"),
+        candidateRank: U("5019 9009 6392 540D"),
         crowdScore: U("907F 5F00 5E73 5206 5206 6570"),
         leftPanel: U("5DE6 4FA7"),
         rightPanel: U("53F3 4FA7"),
@@ -592,7 +595,7 @@
         noNewDataAudit: U("6CA1 6709 65B0 589E 5F00 5956 FF0C 53EA 5237 65B0 5907 9009 9884 6D4B 3002"),
         noPreviousPrediction: U("6CA1 6709 4E0A 6B21 9884 6D4B 53EF 5BF9 6BD4 3002"),
         stablePick: U("4E3B 63A8 8350"),
-        weightedAlternatives: U("52A0 6743 968F 673A 5907 9009"),
+        weightedAlternatives: U("52A0 6743 5907 9009"),
         alternativesHint: U("6BCF 6B21 91CD 7B97 4F1A 53D8 5316"),
         halfLife: U("534A 8870 671F"),
         drawUnit: U("671F"),
@@ -652,6 +655,9 @@
         patternProfile: "Pattern profile",
         modelDetails: "Model details",
         deepLearningDevice: "Deep learning device",
+        primarySelectionMode: "Primary mode",
+        stableBestReference: "Stable best reference",
+        candidateRank: "Candidate rank",
         crowdScore: "Crowd split avoidance score",
         leftPanel: "Left panel",
         rightPanel: "Right panel",
@@ -668,8 +674,8 @@
         alternativeShort: "Alternative",
         noNewDataAudit: "No new draw data; only refreshed weighted random alternatives.",
         noPreviousPrediction: "No previous prediction was available for comparison.",
-        stablePick: "Stable best pick",
-        weightedAlternatives: "Weighted random alternatives",
+        stablePick: "Primary recommendation",
+        weightedAlternatives: "Weighted alternatives",
         alternativesHint: "changes on each recalculation",
         halfLife: "Half-life",
         drawUnit: "draws",
@@ -815,6 +821,16 @@
         const deepLearningDevice = prediction.deep_learning_device
           ? `<br>${t("deepLearningDevice")}: ${prediction.deep_learning_device}`
           : "";
+        const selectionDetails = prediction.prediction_selection_mode
+          ? `<br>${t("primarySelectionMode")}: ${prediction.prediction_selection_mode}${
+              prediction.primary_candidate_rank
+                ? ` (${t("candidateRank")}: ${prediction.primary_candidate_rank}/${prediction.primary_candidate_count || "?"})`
+                : ""
+            }`
+          : "";
+        const stableReference = prediction.stable_best_picks && prediction.stable_best_picks !== prediction.picks
+          ? `<div class="meta">${t("stableBestReference")}: <span class="chip">${prediction.stable_best_picks}</span></div>`
+          : "";
 
         return `
           <article class="panel card ${gameClass(prediction.game)}">
@@ -850,6 +866,7 @@
             <div class="pick-block">
               <div class="meta"><strong>${t("stablePick")}</strong> / ${t("predictionNumbers")}</div>
               <div class="balls">${balls}</div>
+              ${stableReference}
             </div>
 
             ${alternatives ? `
@@ -864,7 +881,7 @@
               <summary>${t("modelDetails")}</summary>
               <div class="meta">
                 ${t("halfLife")}: ${prediction.half_life_draws} ${t("drawUnit")}<br>
-                ${t("patternScore")}: ${prediction.pattern_score || t("unknown")}${crowdScore}${deepLearningDevice}${trainedConfigTime}<br>
+                ${t("patternScore")}: ${prediction.pattern_score || t("unknown")}${crowdScore}${deepLearningDevice}${selectionDetails}${trainedConfigTime}<br>
                 ${t("model")}: ${prediction.model || t("unknown")},
                 ${t("nonBirthdayCount")}: ${prediction.non_birthday_count ?? t("unknown")}
               </div>

@@ -55,7 +55,7 @@ node .\refresh_and_predict.mjs --endDate=2026-06-21
 
 ## Train Weights
 
-The refresh workflow now uses a PyTorch deep-learning trainer by default when new official data is found. The trainer uses the earlier rule set as neural-network features and post-processing constraints: recent activity, long-term hotness, cold rebound, birthday/low-month avoidance, round-number avoidance, historical pattern profile, and crowd split avoidance.
+The refresh workflow now uses a PyTorch deep-learning trainer by default when new official data is found. The trainer uses the earlier rule set as neural-network features and post-processing constraints: recent activity, recent 5/10/20 draw burst activity, long-term hotness, cold rebound, birthday/low-month avoidance, round-number avoidance, historical pattern profile, and crowd split avoidance.
 
 GPU setup for this machine lives in the local `.venv/` folder:
 
@@ -99,7 +99,8 @@ node .\refresh_and_predict.mjs --trainer=weights
 
 The current prediction model is `composite_weighted_v3_pattern_profile`. It combines:
 
-- Recent activity: newer winning numbers receive higher exponentially decayed weight.
+- Recent activity: newer winning numbers receive higher exponentially decayed weight. The deep-learning trainer now uses a 52-draw half-life.
+- Recent burst: the latest 5 draws count strongest, the latest 10 count moderately, and the latest 20 still count lightly. This is the experimental layer for testing whether very recent draw-machine behavior has any detectable signal.
 - Long-term hotness: numbers with historically above-expected frequency receive extra score.
 - Cold-number rebound: numbers absent for longer periods receive a mild recovery score.
 - Deep-learning probability: when `trained_model_config.json` was produced by `train_deep_lottery_model.py`, each number receives a PyTorch neural-network probability trained on rolling historical windows.
@@ -107,21 +108,27 @@ The current prediction model is `composite_weighted_v3_pattern_profile`. It comb
 - Pattern profile scoring: combinations are scored against historical odd/even balance, low/high balance, sum range, consecutive pairs, same-tail concentration, and repeat count from the latest draw.
 - Crowd split avoidance: combinations with fewer date-heavy, low-month, round-number, and obvious-pattern traits receive a small extra score. This does not change draw odds, but it can reduce the risk of sharing a prize with common human-picked tickets.
 
-Default model weights:
+Default trained model weights:
 
 ```text
-recent_activity=0.46
-long_term_hotness=0.34
-cold_rebound=0.20
+recent_activity=0.24
+recent_burst=0.16
+long_term_hotness=0.12
+cold_rebound=0.15
+deep_learning=0.33
 ```
 
-The UI shows one stable best pick plus five weighted random alternatives. The stable pick is deterministic; alternatives are resampled on each recalculation while still using the same score weights and birthday-number rule.
+The UI shows one primary recommendation plus five weighted alternatives. By default the primary recommendation uses weighted exploration from high-scoring model candidates, so it can change between recalculations while still staying inside the model's preferred range. Use deterministic mode when you want the exact stable best-scoring combination:
+
+```powershell
+node .\refresh_and_predict.mjs --primaryPickMode=stable
+```
 
 Each generated prediction includes a `prediction_generated_at` timestamp so old number sets are easy to identify.
 
 ## Runtime Notes
 
-The one-click official refresh can take a while because it may download roughly 10 years of draw data and, when new draws are found, run a CPU-based random weight search. This project currently uses Node.js on the CPU, not GPU acceleration. Local-only recalculation is much faster because it skips official download and retraining.
+The one-click official refresh can take a while because it may download roughly 10 years of draw data and, when new draws are found, run the PyTorch deep-learning trainer. On this machine the trainer uses CUDA when `.venv` has the GPU PyTorch package installed. Local-only recalculation is much faster because it skips official download and retraining.
 
 ## Data Files
 

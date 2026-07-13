@@ -18,6 +18,9 @@ const yearsBack = Number(args.yearsBack ?? 10);
 const skipFetch = args.skipFetch === "true";
 const trainOnNewData = args.trainOnNewData !== "false";
 const trainer = args.trainer ?? "deep";
+const primaryPickMode = args.primaryPickMode ?? "explore";
+const primaryExplorationAttempts = parsePositiveInteger(args.primaryExplorationAttempts, 90);
+const primaryCandidateLimit = parsePositiveInteger(args.primaryCandidateLimit, 28);
 const modelConfigPath = args.modelConfig ?? path.join(rootDir, "trained_model_config.json");
 const useTrainedModelConfig = args.useTrainedModelConfig !== "false";
 const lotto649HalfLife = Number(args.lotto649HalfLife ?? 26);
@@ -28,6 +31,11 @@ const defaultCombinationScoreWeights = {
   crowdAvoidance: 0.1,
 };
 let trainedModelConfig = loadTrainedModelConfig();
+
+function parsePositiveInteger(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
 
 function loadTrainedModelConfig() {
   if (!useTrainedModelConfig || !fsSync.existsSync(modelConfigPath)) return null;
@@ -65,13 +73,18 @@ function applyTrainedOverrides(config) {
 
 function normalizeScoreWeights(weights) {
   const recentActivity = Number(weights.recentActivity ?? 0);
+  const recentBurst = Number(weights.recentBurst ?? 0);
   const longTermHotness = Number(weights.longTermHotness ?? 0);
   const coldRebound = Number(weights.coldRebound ?? 0);
   const deepLearning = Number(weights.deepLearning ?? 0);
-  const total = Math.max(0.000001, recentActivity + longTermHotness + coldRebound + deepLearning);
+  const total = Math.max(
+    0.000001,
+    recentActivity + recentBurst + longTermHotness + coldRebound + deepLearning,
+  );
 
   return {
     recentActivity: recentActivity / total,
+    recentBurst: recentBurst / total,
     longTermHotness: longTermHotness / total,
     coldRebound: coldRebound / total,
     deepLearning: deepLearning / total,
@@ -101,6 +114,7 @@ function buildGameConfigs() {
     minimumNonBirthdayNumbers: 2,
     scoreWeights: {
       recentActivity: 0.46,
+      recentBurst: 0.18,
       longTermHotness: 0.34,
       coldRebound: 0.2,
     },
@@ -119,6 +133,7 @@ function buildGameConfigs() {
     minimumNonBirthdayNumbers: 2,
     scoreWeights: {
       recentActivity: 0.46,
+      recentBurst: 0.18,
       longTermHotness: 0.34,
       coldRebound: 0.2,
     },
@@ -212,6 +227,10 @@ function splitNumberList(value) {
     .split("-")
     .map((number) => Number(number))
     .filter((number) => Number.isInteger(number));
+}
+
+function numberKey(numbers) {
+  return [...numbers].sort((left, right) => left - right).join("-");
 }
 
 function splitAlternativeNumberLists(value) {
@@ -649,6 +668,8 @@ function createNumberStats(poolSize) {
           number,
           recentObserved: 0,
           recentExpected: 0,
+          recentBurstObserved: 0,
+          recentBurstExpected: 0,
           longObserved: 0,
           longExpected: 0,
           availableDraws: 0,
@@ -669,18 +690,21 @@ function scoreCompositeWeighted(rows, config, poolSize) {
   rows.forEach((row, rowIndex) => {
     const age = latestIndex - rowIndex;
     const weight = Math.pow(0.5, age / config.halfLife);
+    const burstWeight = age < 5 ? 3 : age < 10 ? 2 : age < 20 ? 1 : 0;
     const rowPoolSize = config.poolSizeForDate(row.draw_date);
     const expectedPerAvailableNumber = config.pickCount / rowPoolSize;
 
     for (let number = 1; number <= Math.min(poolSize, rowPoolSize); number += 1) {
       stats[number].availableDraws += 1;
       stats[number].recentExpected += weight * expectedPerAvailableNumber;
+      stats[number].recentBurstExpected += burstWeight * expectedPerAvailableNumber;
       stats[number].longExpected += expectedPerAvailableNumber;
     }
 
     for (const number of getMainNumbers(row, config)) {
       if (number >= 1 && number <= poolSize) {
         stats[number].recentObserved += weight;
+        stats[number].recentBurstObserved += burstWeight;
         stats[number].longObserved += 1;
         stats[number].lastSeenRowIndex = rowIndex;
         stats[number].lastSeenAvailableDraw = stats[number].availableDraws;
@@ -693,12 +717,15 @@ function scoreCompositeWeighted(rows, config, poolSize) {
     const coldAge = Math.max(0, entry.availableDraws - entry.lastSeenAvailableDraw);
     const recentRatio =
       entry.recentExpected > 0 ? entry.recentObserved / entry.recentExpected : 0;
+    const recentBurstRatio =
+      entry.recentBurstExpected > 0 ? entry.recentBurstObserved / entry.recentBurstExpected : 0;
     const longRatio = entry.longExpected > 0 ? entry.longObserved / entry.longExpected : 0;
     const coldRatio = Math.min(coldAge / (expectedGap * 2.5), 1.6);
 
     return {
       ...entry,
       recentRatio,
+      recentBurstRatio,
       longRatio,
       coldAge,
       coldRatio,
@@ -708,6 +735,7 @@ function scoreCompositeWeighted(rows, config, poolSize) {
   });
 
   normalizeMetric(entries, "recentRatio", "recentActivityScore");
+  normalizeMetric(entries, "recentBurstRatio", "recentBurstScore");
   normalizeMetric(entries, "longRatio", "longTermHotnessScore");
   normalizeMetric(entries, "coldRatio", "coldReboundScore");
   normalizeMetric(entries, "deepLearningRaw", "deepLearningScore");
@@ -715,6 +743,7 @@ function scoreCompositeWeighted(rows, config, poolSize) {
   for (const entry of entries) {
     const baseScore =
       scoreWeights.recentActivity * entry.recentActivityScore +
+      scoreWeights.recentBurst * entry.recentBurstScore +
       scoreWeights.longTermHotness * entry.longTermHotnessScore +
       scoreWeights.coldRebound * entry.coldReboundScore +
       scoreWeights.deepLearning * entry.deepLearningScore;
@@ -1059,9 +1088,74 @@ function selectWeightedRandomPicks(ranked, config, patternProfile) {
   return weightedChoice(candidates, 4, (candidate) => candidate.combinedScore) ?? candidates[0];
 }
 
-function buildWeightedRandomAlternatives(ranked, config, stablePicks, patternProfile, count = 5) {
+function buildExplorationCandidatePool(ranked, config, patternProfile, stableCandidate) {
+  const candidates = [];
+  const seen = new Set();
+
+  function addCandidate(candidate) {
+    if (!candidate) return;
+    const key = numberKey(candidate.numbers);
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push(candidate);
+  }
+
+  addCandidate(stableCandidate);
+  for (let attempt = 0; attempt < primaryExplorationAttempts; attempt += 1) {
+    addCandidate(selectWeightedRandomPicks(ranked, config, patternProfile));
+  }
+
+  return candidates.sort((left, right) => {
+    if (right.combinedScore !== left.combinedScore) return right.combinedScore - left.combinedScore;
+    if (right.numberScore !== left.numberScore) return right.numberScore - left.numberScore;
+    return numberKey(left.numbers).localeCompare(numberKey(right.numbers));
+  });
+}
+
+function selectPrimaryCandidate(ranked, config, patternProfile, previousPrediction) {
+  const stableCandidate = selectPatternAwarePicks(ranked, config, patternProfile);
+  const previousPicks = splitNumberList(previousPrediction?.picks);
+  const previousKey = numberKey(previousPicks);
+
+  if (primaryPickMode === "stable") {
+    return {
+      candidate: stableCandidate,
+      stableCandidate,
+      candidateCount: 1,
+      selectionMode: "stable_best",
+      selectedRank: 1,
+      repeatedPrevious: previousKey === numberKey(stableCandidate.numbers),
+    };
+  }
+
+  const candidatePool = buildExplorationCandidatePool(ranked, config, patternProfile, stableCandidate);
+  const rankedCandidates = candidatePool.slice(0, primaryCandidateLimit);
+  const nonRepeatedCandidates = previousKey
+    ? rankedCandidates.filter((candidate) => numberKey(candidate.numbers) !== previousKey)
+    : rankedCandidates;
+  const selectionPool = nonRepeatedCandidates.length > 0 ? nonRepeatedCandidates : rankedCandidates;
+  const selectedCandidate =
+    weightedChoice(selectionPool, 8, (candidate) => candidate.combinedScore) ??
+    stableCandidate;
+  const selectedKey = numberKey(selectedCandidate.numbers);
+  const selectedRank = Math.max(
+    1,
+    candidatePool.findIndex((candidate) => numberKey(candidate.numbers) === selectedKey) + 1,
+  );
+
+  return {
+    candidate: selectedCandidate,
+    stableCandidate,
+    candidateCount: candidatePool.length,
+    selectionMode: primaryPickMode === "explore" ? "weighted_exploration" : primaryPickMode,
+    selectedRank,
+    repeatedPrevious: Boolean(previousKey && previousKey === selectedKey),
+  };
+}
+
+function buildWeightedRandomAlternatives(ranked, config, stablePicks, patternProfile, count = 5, extraExcludedKeys = []) {
   const alternatives = [];
-  const seen = new Set([stablePicks.join("-")]);
+  const seen = new Set([numberKey(stablePicks), ...extraExcludedKeys.filter(Boolean)]);
   const maxAttempts = count * 80;
 
   for (let attempt = 0; attempt < maxAttempts && alternatives.length < count; attempt += 1) {
@@ -1152,19 +1246,22 @@ function validateRows(rows, config, csvPath, startDateKey, endDateKey) {
   };
 }
 
-function predictionForGame(rows, config, predictionGeneratedAt) {
+function predictionForGame(rows, config, predictionGeneratedAt, previousPrediction) {
   const latestRow = rows.at(-1);
   const predictionDate = nextDrawDate(config.key, latestRow.draw_date);
   const poolSize = config.poolSizeForDate(predictionDate);
   const ranked = scoreCompositeWeighted(rows, config, poolSize);
   const patternProfile = createPatternProfile(rows, config, poolSize);
-  const selectedCandidate = selectPatternAwarePicks(ranked, config, patternProfile);
+  const primarySelection = selectPrimaryCandidate(ranked, config, patternProfile, previousPrediction);
+  const selectedCandidate = primarySelection.candidate;
   const picks = selectedCandidate.numbers;
   const weightedRandomAlternatives = buildWeightedRandomAlternatives(
     ranked,
     config,
     picks,
     patternProfile,
+    5,
+    [numberKey(primarySelection.stableCandidate.numbers)],
   );
   const nonBirthdayCount = picks.filter((number) => number > 31).length;
   const latestWinningNumbers = getMainNumbers(latestRow, config).join("-");
@@ -1188,10 +1285,15 @@ function predictionForGame(rows, config, predictionGeneratedAt) {
       ? `avg_hits=${config.deepLearning.validation.avg_hits_per_draw};rate>=3=${config.deepLearning.validation.rate_at_least_3}`
       : "",
     half_life_draws: config.halfLife,
-    model_weights: `recent_activity=${scoreWeights.recentActivity};long_term_hotness=${scoreWeights.longTermHotness};cold_rebound=${scoreWeights.coldRebound};deep_learning=${scoreWeights.deepLearning};number_score=${config.combinationScoreWeights.numberScore};pattern_profile=${config.combinationScoreWeights.patternProfile};crowd_avoidance=${config.combinationScoreWeights.crowdAvoidance}`,
+    model_weights: `recent_activity=${scoreWeights.recentActivity};recent_burst=${scoreWeights.recentBurst};long_term_hotness=${scoreWeights.longTermHotness};cold_rebound=${scoreWeights.coldRebound};deep_learning=${scoreWeights.deepLearning};number_score=${config.combinationScoreWeights.numberScore};pattern_profile=${config.combinationScoreWeights.patternProfile};crowd_avoidance=${config.combinationScoreWeights.crowdAvoidance}`,
     birthday_sharing_rule: `minimum_${config.minimumNonBirthdayNumbers}_numbers_above_31`,
     non_birthday_count: nonBirthdayCount,
     pool_size: poolSize,
+    prediction_selection_mode: primarySelection.selectionMode,
+    stable_best_picks: primarySelection.stableCandidate.numbers.join("-"),
+    primary_candidate_rank: primarySelection.selectedRank,
+    primary_candidate_count: primarySelection.candidateCount,
+    repeated_previous_pick: String(primarySelection.repeatedPrevious),
     pattern_score: selectedCandidate.patternScore.toFixed(4),
     crowd_avoidance_score: selectedCandidate.crowdAvoidanceScore.toFixed(4),
     pattern_profile: formatPatternProfile(selectedCandidate, patternProfile),
@@ -1203,7 +1305,7 @@ function predictionForGame(rows, config, predictionGeneratedAt) {
       .slice(0, 12)
       .map(
         (entry) =>
-          `${entry.number}:${entry.score.toFixed(4)}(R${entry.recentActivityScore.toFixed(2)},H${entry.longTermHotnessScore.toFixed(2)},C${entry.coldReboundScore.toFixed(2)},D${entry.deepLearningScore.toFixed(2)})`,
+          `${entry.number}:${entry.score.toFixed(4)}(R${entry.recentActivityScore.toFixed(2)},B${entry.recentBurstScore.toFixed(2)},H${entry.longTermHotnessScore.toFixed(2)},C${entry.coldReboundScore.toFixed(2)},D${entry.deepLearningScore.toFixed(2)})`,
       )
       .join(";"),
   };
@@ -1266,7 +1368,10 @@ const hasNewOfficialData =
 const trainingRun = await trainModelIfNeeded(hasNewOfficialData);
 
 for (const config of gameConfigs) {
-  predictionRows.push(predictionForGame(rowsByGame[config.key], config, predictionGeneratedAt));
+  const previousPrediction = previousPredictions.find((prediction) => prediction.game === config.label);
+  predictionRows.push(
+    predictionForGame(rowsByGame[config.key], config, predictionGeneratedAt, previousPrediction),
+  );
 }
 
 const predictionColumns = [
@@ -1287,6 +1392,11 @@ const predictionColumns = [
   "birthday_sharing_rule",
   "non_birthday_count",
   "pool_size",
+  "prediction_selection_mode",
+  "stable_best_picks",
+  "primary_candidate_rank",
+  "primary_candidate_count",
+  "repeated_previous_pick",
   "pattern_score",
   "crowd_avoidance_score",
   "pattern_profile",

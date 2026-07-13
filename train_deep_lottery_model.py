@@ -34,7 +34,7 @@ GAME_CONFIGS = {
     "lotto649": {
         "label": "Lotto 649",
         "pick_count": 6,
-        "default_half_life": 156,
+        "default_half_life": 52,
         "minimum_non_birthday_numbers": 2,
         "main_columns": ["main_1", "main_2", "main_3", "main_4", "main_5", "main_6"],
         "draw_days": {2, 5},  # Python date.weekday(): Wednesday=2, Saturday=5
@@ -42,7 +42,7 @@ GAME_CONFIGS = {
     "lottomax": {
         "label": "Lotto Max",
         "pick_count": 7,
-        "default_half_life": 78,
+        "default_half_life": 52,
         "minimum_non_birthday_numbers": 3,
         "main_columns": ["main_1", "main_2", "main_3", "main_4", "main_5", "main_6", "main_7"],
         "draw_days": {1, 4},  # Tuesday=1, Friday=4
@@ -215,6 +215,7 @@ def build_features(history_rows, config, game_key, target_date_key):
     long_expected = np.zeros(MAX_POOL_SIZE, dtype=np.float32)
     available_draws = np.zeros(MAX_POOL_SIZE, dtype=np.float32)
     last_seen_available = np.zeros(MAX_POOL_SIZE, dtype=np.float32)
+    ultra_counts = np.zeros(MAX_POOL_SIZE, dtype=np.float32)
     short_counts = np.zeros(MAX_POOL_SIZE, dtype=np.float32)
     medium_counts = np.zeros(MAX_POOL_SIZE, dtype=np.float32)
     half_life = float(config["default_half_life"])
@@ -237,9 +238,11 @@ def build_features(history_rows, config, game_key, target_date_key):
                 recent_observed[number_index] += weight
                 long_observed[number_index] += 1
                 last_seen_available[number_index] = available_draws[number_index]
-                if age < 8:
+                if age < 5:
+                    ultra_counts[number_index] += 1
+                if age < 10:
                     short_counts[number_index] += 1
-                if age < 32:
+                if age < 20:
                     medium_counts[number_index] += 1
 
     expected_gap = max(1.0, pool_size / pick_count)
@@ -271,8 +274,9 @@ def build_features(history_rows, config, game_key, target_date_key):
                 long_score[number_index],
                 cold_score[number_index],
                 min(cold_age[number_index] / (expected_gap * 4.0), 1.0),
-                short_counts[number_index] / max(1.0, min(8, len(history_rows))),
-                medium_counts[number_index] / max(1.0, min(32, len(history_rows))),
+                ultra_counts[number_index] / max(1.0, min(5, len(history_rows))),
+                short_counts[number_index] / max(1.0, min(10, len(history_rows))),
+                medium_counts[number_index] / max(1.0, min(20, len(history_rows))),
                 pool_size / MAX_POOL_SIZE,
                 pick_count / 7.0,
                 latest_features["sum"] / max(1.0, pool_size * pick_count),
@@ -499,10 +503,11 @@ def train_game(game_key, config, rows, csv_path, args, device):
         "halfLife": config["default_half_life"],
         "minimumNonBirthdayNumbers": config["minimum_non_birthday_numbers"],
         "scoreWeights": {
-            "recentActivity": 0.2,
-            "longTermHotness": 0.15,
+            "recentActivity": 0.24,
+            "recentBurst": 0.16,
+            "longTermHotness": 0.12,
             "coldRebound": 0.15,
-            "deepLearning": 0.5,
+            "deepLearning": 0.33,
         },
         "combinationScoreWeights": {
             "numberScore": 0.6,
@@ -515,6 +520,7 @@ def train_game(game_key, config, rows, csv_path, args, device):
             "cudaDeviceName": torch.cuda.get_device_name(0) if device.type == "cuda" else "",
             "featureRules": [
                 "recent_activity",
+                "recent_5_10_20_draw_burst",
                 "long_term_hotness",
                 "cold_number_rebound",
                 "birthday_and_low_month_avoidance",
