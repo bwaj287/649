@@ -185,7 +185,14 @@ async function getStatus() {
   };
 }
 
-function runRefresh({ skipFetch }) {
+function parsePortfolioLineCount(value) {
+  if (value === null || value === undefined || value === "") return 4;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 4;
+  return Math.max(1, Math.min(20, Math.floor(parsed)));
+}
+
+function runRefresh({ skipFetch, portfolioLineCount }) {
   if (activeRun) return activeRun;
 
   activeRun = new Promise((resolve, reject) => {
@@ -194,6 +201,7 @@ function runRefresh({ skipFetch }) {
     if (skipFetch) {
       refreshArgs.push("--skipFetch=true");
     }
+    refreshArgs.push(`--portfolioLineCount=${parsePortfolioLineCount(portfolioLineCount)}`);
 
     const child = spawn(process.execPath, refreshArgs, {
       cwd: rootDir,
@@ -253,7 +261,10 @@ async function handleRequest(request, response) {
         jsonResponse(response, 409, { error: "已有任务正在运行，请等它完成。" });
         return;
       }
-      const result = await runRefresh({ skipFetch: true });
+      const result = await runRefresh({
+        skipFetch: true,
+        portfolioLineCount: url.searchParams.get("portfolioLines"),
+      });
       jsonResponse(response, 200, { result, status: await getStatus() });
       return;
     }
@@ -263,7 +274,10 @@ async function handleRequest(request, response) {
         jsonResponse(response, 409, { error: "已有任务正在运行，请等它完成。" });
         return;
       }
-      const result = await runRefresh({ skipFetch: false });
+      const result = await runRefresh({
+        skipFetch: false,
+        portfolioLineCount: url.searchParams.get("portfolioLines"),
+      });
       jsonResponse(response, 200, { result, status: await getStatus() });
       return;
     }

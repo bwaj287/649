@@ -168,6 +168,39 @@
 
     .button-stack { display: grid; gap: 12px; }
 
+    .portfolio-control {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 8px 14px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.34);
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 900;
+    }
+
+    .portfolio-control small {
+      grid-column: 1 / -1;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 1.5;
+    }
+
+    .portfolio-control select {
+      min-width: 86px;
+      padding: 9px 12px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      color: var(--ink);
+      background: var(--paper);
+      font: inherit;
+      font-weight: 900;
+    }
+
     button {
       cursor: pointer;
       border: 0;
@@ -318,6 +351,34 @@
     }
 
     .pick-block .balls { margin: 14px 0 0; }
+
+    .portfolio-block {
+      position: relative;
+      z-index: 1;
+      margin: 18px 0;
+      padding: 18px;
+      border: 1px solid rgba(23, 106, 75, 0.2);
+      border-radius: 24px;
+      background:
+        linear-gradient(135deg, rgba(23, 106, 75, 0.10), rgba(255, 255, 255, 0.26)),
+        radial-gradient(circle at top right, rgba(217, 159, 43, 0.18), transparent 14rem);
+    }
+
+    .portfolio-summary {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin: 12px 0;
+    }
+
+    .portfolio-summary .stat { background: rgba(255, 255, 255, 0.42); }
+
+    .portfolio-warning {
+      margin-top: 12px;
+      color: #7b5314;
+      font-size: 12px;
+      line-height: 1.6;
+    }
 
     .latest-result {
       position: relative;
@@ -580,6 +641,16 @@
           <strong id="runState">Loading</strong>
         </div>
         <div class="button-stack">
+          <label class="portfolio-control">
+            <span data-i18n="portfolioSize">Portfolio lines</span>
+            <select id="portfolioLineCount">
+              <option value="1">1</option>
+              <option value="4" selected>4</option>
+              <option value="8">8</option>
+              <option value="12">12</option>
+            </select>
+            <small data-i18n="portfolioSizeHint">Choose how many distinct lines to generate.</small>
+          </label>
           <button id="refreshBtn" data-i18n="refreshButton">Refresh official data and predict</button>
           <button id="localBtn" class="secondary" data-i18n="localButton">Predict from local data only</button>
         </div>
@@ -657,11 +728,25 @@
         bestAlternative: U("6700 4F73 5907 9009"),
         averageAlternative: U("5E73 5747 5907 9009"),
         alternativeShort: U("5907 9009"),
-        noNewDataAudit: U("6CA1 6709 65B0 589E 5F00 5956 FF0C 53EA 5237 65B0 5907 9009 9884 6D4B 3002"),
+        noNewDataAudit: U("6CA1 6709 65B0 589E 5F00 5956 FF0C 5DF2 5237 65B0 7EC4 5408 5305 548C 5907 9009 9884 6D4B 3002"),
         noPreviousPrediction: U("6CA1 6709 4E0A 6B21 9884 6D4B 53EF 5BF9 6BD4 3002"),
         stablePick: U("4E3B 63A8 8350"),
         weightedAlternatives: U("52A0 6743 5907 9009"),
         alternativesHint: U("6BCF 6B21 91CD 7B97 4F1A 53D8 5316"),
+        portfolioSize: U("7EC4 5408 5305 6CE8 6570"),
+        portfolioSizeHint: U("9009 62E9 8981 751F 6210 7684 4E92 4E0D 91CD 590D 53F7 7801 7EC4 5408 3002"),
+        coveragePortfolio: U("4F4E 91CD 53E0 8986 76D6 7EC4 5408 5305"),
+        coveragePortfolioHint: U("6A21 578B 9AD8 5206 52A0 8986 76D6 4F18 5316"),
+        portfolioOdds: U("5934 5956 6982 7387"),
+        portfolioProbability: U("6982 7387"),
+        portfolioCoverage: U("8986 76D6 53F7 7801"),
+        portfolioOverlap: U("6700 5927 7EC4 95F4 91CD 53E0"),
+        portfolioLine: U("7B2C") + " {count} " + U("6CE8"),
+        primaryLine: U("4E3B 63A8 8350"),
+        portfolioMathNotice: U("4F4E 91CD 53E0 4E0D 4F1A 63D0 9AD8 5355 6CE8 4E2D 5956 7387 FF0C 53EA 51CF 5C11 7EC4 5408 5305 5185 90E8 91CD 590D 8986 76D6 3002"),
+        portfolioPurchaseNotice: U("53EA 6709 5B9E 9645 8D2D 4E70 8FD9 4E9B 4E92 4E0D 91CD 590D 7EC4 5408 FF0C 6982 7387 624D 4F1A 6309 6CE8 6570 7EBF 6027 589E 52A0 3002"),
+        portfolioAudit: U("7EC4 5408 5305 547D 4E2D"),
+        bestPortfolioLine: U("6700 4F73 7EC4 5408"),
         halfLife: U("534A 8870 671F"),
         drawUnit: U("671F"),
         model: U("6A21 578B"),
@@ -741,11 +826,25 @@
         bestAlternative: "Best alternative",
         averageAlternative: "Average alternative",
         alternativeShort: "Alternative",
-        noNewDataAudit: "No new draw data; only refreshed weighted random alternatives.",
+        noNewDataAudit: "No new draw data; refreshed the coverage portfolio and weighted alternatives.",
         noPreviousPrediction: "No previous prediction was available for comparison.",
         stablePick: "Primary recommendation",
         weightedAlternatives: "Weighted alternatives",
         alternativesHint: "changes on each recalculation",
+        portfolioSize: "Coverage portfolio lines",
+        portfolioSizeHint: "Choose how many distinct lines to generate.",
+        coveragePortfolio: "Low-overlap coverage portfolio",
+        coveragePortfolioHint: "model score plus coverage optimization",
+        portfolioOdds: "Jackpot odds",
+        portfolioProbability: "probability",
+        portfolioCoverage: "unique numbers covered",
+        portfolioOverlap: "maximum overlap",
+        portfolioLine: "Line {count}",
+        primaryLine: "primary",
+        portfolioMathNotice: "Low overlap does not improve a single line's odds; it only reduces repeated coverage inside the portfolio.",
+        portfolioPurchaseNotice: "The odds increase applies only if every distinct line shown here is actually purchased.",
+        portfolioAudit: "Coverage portfolio hits",
+        bestPortfolioLine: "Best portfolio line",
         halfLife: "Half-life",
         drawUnit: "draws",
         model: "Model",
@@ -789,11 +888,16 @@
     const generatedAt = document.querySelector("#generatedAt");
     const refreshBtn = document.querySelector("#refreshBtn");
     const localBtn = document.querySelector("#localBtn");
+    const portfolioLineCount = document.querySelector("#portfolioLineCount");
     const langZh = document.querySelector("#langZh");
     const langEn = document.querySelector("#langEn");
 
     let currentLanguage = localStorage.getItem("lotto-ui-language") || "zh";
     let currentStatus = null;
+    const savedPortfolioLineCount = localStorage.getItem("lotto-portfolio-line-count") || "4";
+    portfolioLineCount.value = ["1", "4", "8", "12"].includes(savedPortfolioLineCount)
+      ? savedPortfolioLineCount
+      : "4";
 
     function t(key, replacements = {}) {
       const dictionary = translations[currentLanguage] || translations.zh;
@@ -812,6 +916,7 @@
     function setBusy(isBusy) {
       refreshBtn.disabled = isBusy;
       localBtn.disabled = isBusy;
+      portfolioLineCount.disabled = isBusy;
       runState.textContent = isBusy ? t("running") : t("idle");
     }
 
@@ -841,6 +946,17 @@
 
     function parseAlternatives(text) {
       return String(text || "").split(";").filter(Boolean).slice(0, 5);
+    }
+
+    function parsePortfolioLines(text) {
+      return String(text || "").split(";").filter(Boolean);
+    }
+
+    function formatInteger(value) {
+      const number = Number(value);
+      return Number.isFinite(number)
+        ? Math.round(number).toLocaleString(currentLanguage === "zh" ? "zh-CN" : "en-CA")
+        : t("unknown");
     }
 
     function renderBalls(picks, className = "") {
@@ -929,6 +1045,49 @@
         const stableReference = prediction.stable_best_picks && prediction.stable_best_picks !== prediction.picks
           ? `<div class="meta">${t("stableBestReference")}: <span class="chip">${prediction.stable_best_picks}</span></div>`
           : "";
+        const portfolioLines = parsePortfolioLines(prediction.portfolio_lines);
+        const portfolio = portfolioLines.length > 0
+          ? `
+            <div class="portfolio-block">
+              <div class="meta">
+                <strong>${t("coveragePortfolio")}</strong>
+                <span class="chip">${prediction.portfolio_relative_odds || portfolioLines.length}x</span><br>
+                ${t("coveragePortfolioHint")}
+              </div>
+              <div class="portfolio-summary">
+                <div class="stat">
+                  <strong>1 / ${formatInteger(prediction.portfolio_jackpot_one_in)}</strong>
+                  ${t("portfolioOdds")}
+                </div>
+                <div class="stat">
+                  <strong>${prediction.portfolio_jackpot_probability_percent || t("unknown")}%</strong>
+                  ${t("portfolioProbability")}
+                </div>
+                <div class="stat">
+                  <strong>${prediction.portfolio_unique_numbers || t("unknown")}</strong>
+                  ${t("portfolioCoverage")}
+                </div>
+                <div class="stat">
+                  <strong>${prediction.portfolio_max_pair_overlap ?? t("unknown")}</strong>
+                  ${t("portfolioOverlap")}
+                </div>
+              </div>
+              <div class="alternative-list">
+                ${portfolioLines.map((line, index) => `
+                  <div class="alternative-row">
+                    <span class="alternative-index">#${index + 1}</span>
+                    <div class="balls compact">${renderBalls(line)}</div>
+                    ${index === 0 ? `<span class="chip">${t("primaryLine")}</span>` : ""}
+                  </div>
+                `).join("")}
+              </div>
+              <div class="portfolio-warning">
+                ${t("portfolioMathNotice")}<br>
+                ${t("portfolioPurchaseNotice")}
+              </div>
+            </div>
+          `
+          : "";
 
         return `
           <article class="panel card ${gameClass(prediction.game)}">
@@ -966,6 +1125,8 @@
               <div class="balls">${balls}</div>
               ${stableReference}
             </div>
+
+            ${portfolio}
 
             ${alternatives ? `
               <div class="meta">
@@ -1095,6 +1256,27 @@
             </div>
           `
           : "";
+        const portfolioAudits = Array.isArray(report.portfolioLines) ? report.portfolioLines : [];
+        const portfolioSummary = portfolioAudits.length > 0
+          ? `
+            <br><strong>${t("portfolioAudit")}</strong><br>
+            ${t("bestPortfolioLine")}:
+            <span class="${Number(report.bestPortfolioHits || 0) > 0 ? "ok" : "warn"}">
+              ${report.bestPortfolioHits || 0}/${portfolioAudits[0]?.pickCount || "?"}
+            </span>
+            ${report.bestPortfolioMatchedNumbers
+              ? `, ${t("matchedNumbers")}: ${report.bestPortfolioMatchedNumbers}`
+              : ""}
+            <div class="top-list">
+              ${portfolioAudits.map((line) => `
+                <span class="chip">
+                  ${t("portfolioLine", { count: line.index })}: ${line.hits}/${line.pickCount}
+                  ${line.matchedNumbers ? ` ${t("matchedNumbers")}: ${line.matchedNumbers}` : ""}
+                </span>
+              `).join("")}
+            </div>
+          `
+          : "";
         cards.push(`
           <div class="check game-audit ${gameClass(report.game)}">
             <span class="game-kicker">${sideLabel}</span><br>
@@ -1106,6 +1288,7 @@
             <span class="${hitClass}">${hits}/${report.pickCount || "?"}</span>,
             ${t("hitRate")}: ${hitRate}<br>
             ${t("matchedNumbers")}: ${report.matchedNumbers || t("none")}
+            ${portfolioSummary}
             ${alternativeSummary}
           </div>
         `);
@@ -1171,7 +1354,8 @@
       try {
         setBusy(true);
         writeLog(t("actionStart", { label }));
-        const response = await fetch(endpoint, { method: "POST" });
+        const portfolioLines = encodeURIComponent(portfolioLineCount.value);
+        const response = await fetch(`${endpoint}?portfolioLines=${portfolioLines}`, { method: "POST" });
         const payload = await response.json();
         if (!response.ok) {
           throw new Error(payload.error || "Task failed");
@@ -1188,6 +1372,9 @@
 
     langZh.addEventListener("click", () => applyLanguage("zh"));
     langEn.addEventListener("click", () => applyLanguage("en"));
+    portfolioLineCount.addEventListener("change", () => {
+      localStorage.setItem("lotto-portfolio-line-count", portfolioLineCount.value);
+    });
     refreshBtn.addEventListener("click", () => runAction("/api/refresh", "refreshLabel"));
     localBtn.addEventListener("click", () => runAction("/api/predict-local", "localLabel"));
 

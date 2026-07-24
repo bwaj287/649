@@ -39,7 +39,7 @@ Refresh official data online and generate new predictions:
 node .\refresh_and_predict.mjs
 ```
 
-When new official draw data is found, this command compares the previous stable prediction and previous weighted random alternatives against the latest newly added draw, reports hits and hit rate, retrains weights, then generates the next prediction. If no new draw data is found, it skips comparison/retraining and only refreshes weighted random alternatives.
+When new official draw data is found, this command compares the previous primary prediction, coverage portfolio, and weighted alternatives against the latest newly added draw, reports hits and hit rate, retrains weights, then generates the next prediction. If no new draw data is found, it skips comparison/retraining and refreshes the portfolio and weighted alternatives.
 
 Recalculate predictions using local CSV files only:
 
@@ -122,6 +122,20 @@ The UI shows one primary recommendation plus five weighted alternatives. By defa
 
 ```powershell
 node .\refresh_and_predict.mjs --primaryPickMode=stable
+```
+
+Coverage portfolio mode can generate 1, 4, 8, or 12 distinct lines. It keeps the
+primary recommendation as line 1, then balances model score with new-number
+coverage and low overlap between lines. The UI reports exact jackpot coverage
+odds and audits every portfolio line after a new draw. The odds multiplier only
+applies when every displayed line is actually purchased. Low overlap does not
+change jackpot odds beyond keeping the lines distinct; it diversifies the
+portfolio's number coverage.
+
+The command-line default is four lines and can be changed up to 20:
+
+```powershell
+node .\refresh_and_predict.mjs --skipFetch=true --portfolioLineCount=8
 ```
 
 Each generated prediction includes a `prediction_generated_at` timestamp so old number sets are easy to identify.
