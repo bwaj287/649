@@ -414,6 +414,70 @@
 
     .model-details[open] summary { margin-bottom: 12px; }
 
+    .recent-draws {
+      position: relative;
+      z-index: 1;
+      margin-top: 18px;
+      border: 1px solid rgba(22, 33, 29, 0.12);
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.30);
+      overflow: hidden;
+    }
+
+    .recent-draws summary {
+      cursor: pointer;
+      padding: 15px 16px;
+      color: var(--green-2);
+      font-size: 14px;
+      font-weight: 950;
+    }
+
+    .recent-draws[open] summary {
+      border-bottom: 1px solid rgba(22, 33, 29, 0.10);
+    }
+
+    .recent-draw-list {
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+    }
+
+    .recent-draw-row {
+      display: grid;
+      grid-template-columns: minmax(92px, 0.8fr) minmax(62px, 0.45fr) minmax(0, 2.1fr);
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+      border-radius: 15px;
+      background: rgba(255, 255, 255, 0.35);
+    }
+
+    .recent-draw-meta {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .recent-draw-balls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .recent-draw-balls .ball {
+      width: 31px;
+      height: 31px;
+      font-size: 13px;
+      box-shadow: inset -4px -5px 9px rgba(4, 42, 28, 0.16), 0 5px 12px rgba(15, 78, 57, 0.14);
+    }
+
+    .recent-draw-balls .ball.bonus {
+      color: #754d10;
+      background: linear-gradient(145deg, #ffd77d, #d99f2b);
+      box-shadow: inset -4px -5px 9px rgba(117, 77, 16, 0.16), 0 5px 12px rgba(117, 77, 16, 0.14);
+    }
+
     .alternative-list {
       position: relative;
       z-index: 1;
@@ -490,6 +554,7 @@
       .shell { width: min(100% - 24px, 760px); padding-top: 20px; }
       .intro, .actions, .card, .checks { padding: 22px; }
       .ball { width: 52px; height: 52px; }
+      .recent-draw-row { grid-template-columns: 1fr; gap: 5px; }
     }
   </style>
 </head>
@@ -602,6 +667,10 @@
         model: U("6A21 578B"),
         nonBirthdayCount: "32+ " + U("53F7 7801 6570"),
         topCandidates: U("6743 91CD 6700 9AD8 5019 9009") + " Top 8",
+        recentDraws: U("6700 8FD1") + " 20 " + U("671F 5F00 5956 53F7 7801"),
+        recentDrawsUnavailable: U("6682 65E0 6700 8FD1 5F00 5956 8BB0 5F55 3002"),
+        drawNumberShort: U("671F 53F7"),
+        bonusShort: U("7279"),
         status: U("72B6 6001"),
         localMode: U("672C 5730 91CD 7B97 FF0C 672A 8054 7F51 4E0B 8F7D"),
         addedDraws: U("65B0 589E") + " {count} " + U("671F"),
@@ -682,6 +751,10 @@
         model: "Model",
         nonBirthdayCount: "32+ count",
         topCandidates: "Top 8 weighted candidates",
+        recentDraws: "Recent 20 draw results",
+        recentDrawsUnavailable: "Recent draw history is not available yet.",
+        drawNumberShort: "Draw #",
+        bonusShort: "Bonus",
         status: "Status",
         localMode: "Local recalculation, no download",
         addedDraws: "Added {count} draw(s)",
@@ -786,6 +859,31 @@
       return game === "Lotto Max" ? "lotto-max" : "lotto-649";
     }
 
+    function recentDrawsForGame(game) {
+      return currentStatus?.recentDraws?.find((entry) => entry.game === game)?.draws || [];
+    }
+
+    function renderRecentDraws(game) {
+      const draws = recentDrawsForGame(game);
+      const rows = draws.map((draw) => `
+        <div class="recent-draw-row">
+          <div class="recent-draw-meta">${draw.drawDate || t("unknown")}<br>${draw.drawDay || ""}</div>
+          <div class="recent-draw-meta">${t("drawNumberShort")}${draw.drawNumber || t("unknown")}</div>
+          <div class="recent-draw-balls">
+            ${renderBalls(draw.mainNumbers, "drawn")}
+            ${draw.bonusNumber ? `<span class="ball bonus" title="${t("bonusShort")}">${draw.bonusNumber}</span>` : ""}
+          </div>
+        </div>
+      `).join("");
+
+      return `
+        <details class="recent-draws">
+          <summary>${t("recentDraws")}</summary>
+          <div class="recent-draw-list">${rows || `<div class="empty">${t("recentDrawsUnavailable")}</div>`}</div>
+        </details>
+      `;
+    }
+
     function renderPredictions(predictions) {
       if (!predictions || predictions.length === 0) {
         cards.innerHTML = `<div class="panel card empty">${t("noPredictions")}</div>`;
@@ -876,6 +974,8 @@
               </div>
               <div class="alternative-list">${alternatives}</div>
             ` : ""}
+
+            ${renderRecentDraws(prediction.game)}
 
             <details class="model-details">
               <summary>${t("modelDetails")}</summary>

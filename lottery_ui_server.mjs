@@ -60,6 +60,100 @@ async function readTextIfExists(filePath, fallback = "") {
   }
 }
 
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const nextChar = text[index + 1];
+
+    if (inQuotes) {
+      if (char === '"' && nextChar === '"') {
+        cell += '"';
+        index += 1;
+      } else if (char === '"') {
+        inQuotes = false;
+      } else {
+        cell += char;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inQuotes = true;
+    } else if (char === ",") {
+      row.push(cell);
+      cell = "";
+    } else if (char === "\n") {
+      row.push(cell.replace(/\r$/, ""));
+      rows.push(row);
+      row = [];
+      cell = "";
+    } else {
+      cell += char;
+    }
+  }
+
+  if (cell.length > 0 || row.length > 0) {
+    row.push(cell.replace(/\r$/, ""));
+    rows.push(row);
+  }
+
+  const headers = rows.shift() ?? [];
+  return rows
+    .filter((values) => values.some((value) => value !== ""))
+    .map((values) => Object.fromEntries(headers.map((header, index) => [header, values[index] ?? ""])));
+}
+
+function isInsideRoot(filePath) {
+  const resolvedRoot = path.resolve(rootDir);
+  const resolvedPath = path.resolve(filePath);
+  return resolvedPath === resolvedRoot || resolvedPath.startsWith(`${resolvedRoot}${path.sep}`);
+}
+
+async function readRecentDraws(report) {
+  const sources = [
+    {
+      game: "Lotto Max",
+      csvPath: report?.refresh?.lottoMaxCsv ?? report?.validationReports?.find((entry) => entry.game === "Lotto Max")?.csvPath,
+      mainCount: 7,
+    },
+    {
+      game: "Lotto 649",
+      csvPath: report?.refresh?.lotto649Csv ?? report?.validationReports?.find((entry) => entry.game === "Lotto 649")?.csvPath,
+      mainCount: 6,
+    },
+  ];
+
+  return Promise.all(sources.map(async ({ game, csvPath, mainCount }) => {
+    if (!csvPath || !isInsideRoot(csvPath)) return { game, draws: [] };
+
+    try {
+      const draws = parseCsv(await fs.readFile(csvPath, "utf8"))
+        .sort((left, right) =>
+          right.draw_date.localeCompare(left.draw_date) || Number(right.draw_number) - Number(left.draw_number)
+        )
+        .slice(0, 20)
+        .map((row) => ({
+          drawDate: row.draw_date,
+          drawNumber: row.draw_number,
+          drawDay: row.draw_day,
+          mainNumbers: Array.from({ length: mainCount }, (_, index) => row[`main_${index + 1}`])
+            .filter(Boolean)
+            .join("-"),
+          bonusNumber: row.bonus_number ?? "",
+        }));
+      return { game, draws };
+    } catch (error) {
+      if (error.code === "ENOENT") return { game, draws: [] };
+      throw error;
+    }
+  }));
+}
+
 async function getStatus() {
   const predictionsPath = path.join(rootDir, "latest_weighted_predictions.json");
   const predictionsTextPath = path.join(rootDir, "latest_weighted_predictions.txt");
@@ -70,6 +164,7 @@ async function getStatus() {
     readTextIfExists(predictionsTextPath, ""),
     readJsonIfExists(reportPath, null),
   ]);
+  const recentDraws = await readRecentDraws(report);
 
   return {
     rootDir,
@@ -81,6 +176,7 @@ async function getStatus() {
     predictionAudit: report?.predictionAudit ?? [],
     trainingRun: report?.trainingRun ?? null,
     validationReports: report?.validationReports ?? [],
+    recentDraws,
     files: report?.predictionFiles ?? {
       json: predictionsPath,
       text: predictionsTextPath,
