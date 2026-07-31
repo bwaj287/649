@@ -507,7 +507,9 @@ def train_game(game_key, config, rows, csv_path, args, device):
             "recentBurst": 0.16,
             "longTermHotness": 0.12,
             "coldRebound": 0.15,
-            "deepLearning": 0.33,
+            # The 6/49 holdout did not beat random, so keep the network for
+            # diagnostics without letting it influence live 6/49 picks.
+            "deepLearning": 0.0 if config["key"] == "lotto649" else 0.33,
         },
         "combinationScoreWeights": {
             "numberScore": 0.6,

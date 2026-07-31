@@ -373,6 +373,33 @@
 
     .portfolio-summary .stat { background: rgba(255, 255, 255, 0.42); }
 
+    .coverage-probabilities {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin: 12px 0;
+    }
+
+    .coverage-probability {
+      padding: 12px;
+      border: 1px solid rgba(23, 106, 75, 0.14);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.48);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .coverage-probability strong {
+      display: block;
+      color: var(--ink);
+      font-size: 18px;
+    }
+
+    .coverage-probability .lift {
+      color: var(--green);
+      font-weight: 800;
+    }
+
     .portfolio-warning {
       margin-top: 12px;
       color: #7b5314;
@@ -611,7 +638,7 @@
     }
 
     @media (max-width: 860px) {
-      .hero, .grid, .check-grid, .stat-grid { grid-template-columns: 1fr; }
+      .hero, .grid, .check-grid, .stat-grid, .coverage-probabilities { grid-template-columns: 1fr; }
       .shell { width: min(100% - 24px, 760px); padding-top: 20px; }
       .intro, .actions, .card, .checks { padding: 22px; }
       .ball { width: 52px; height: 52px; }
@@ -741,6 +768,13 @@
         portfolioProbability: U("6982 7387"),
         portfolioCoverage: U("8986 76D6 53F7 7801"),
         portfolioOverlap: U("6700 5927 7EC4 95F4 91CD 53E0"),
+        coverageHitRates: U("7EC4 5408 547D 4E2D 6982 7387"),
+        atLeastHits: U("81F3 5C11 4E2D") + " {count} " + U("4E2A"),
+        optimizedPortfolio: U("4F18 5316 7EC4 5408"),
+        sameCountRandom: U("540C 6CE8 6570 968F 673A"),
+        liftLabel: U("63D0 5347"),
+        estimateMargin: "95% " + U("4F30 7B97 8BEF 5DEE"),
+        coverageEstimateNotice: U("547D 4E2D 6982 7387 4F7F 7528 72EC 7ACB 8499 7279 5361 6D1B 6837 672C 4F30 7B97 FF1B 5BF9 6BD4 57FA 51C6 4E3A 76F8 540C 6CE8 6570 7684 5747 5300 968F 673A 7EC4 5408 3002"),
         portfolioLine: U("7B2C") + " {count} " + U("6CE8"),
         primaryLine: U("4E3B 63A8 8350"),
         portfolioMathNotice: U("4F4E 91CD 53E0 4E0D 4F1A 63D0 9AD8 5355 6CE8 4E2D 5956 7387 FF0C 53EA 51CF 5C11 7EC4 5408 5305 5185 90E8 91CD 590D 8986 76D6 3002"),
@@ -839,6 +873,13 @@
         portfolioProbability: "probability",
         portfolioCoverage: "unique numbers covered",
         portfolioOverlap: "maximum overlap",
+        coverageHitRates: "Portfolio hit probabilities",
+        atLeastHits: "At least {count} hits",
+        optimizedPortfolio: "optimized portfolio",
+        sameCountRandom: "same-count random",
+        liftLabel: "lift",
+        estimateMargin: "95% estimate margin",
+        coverageEstimateNotice: "Hit probabilities use an independent Monte Carlo sample; the baseline is a uniform random portfolio with the same number of lines.",
         portfolioLine: "Line {count}",
         primaryLine: "primary",
         portfolioMathNotice: "Low overlap does not improve a single line's odds; it only reduces repeated coverage inside the portfolio.",
@@ -1046,6 +1087,28 @@
           ? `<div class="meta">${t("stableBestReference")}: <span class="chip">${prediction.stable_best_picks}</span></div>`
           : "";
         const portfolioLines = parsePortfolioLines(prediction.portfolio_lines);
+        const coverageProbabilityCards = [2, 3, 4]
+          .map((threshold) => {
+            const optimized = prediction[`portfolio_hit_probability_ge_${threshold}_percent`];
+            const random = prediction[`portfolio_random_baseline_ge_${threshold}_percent`];
+            const lift = Number(prediction[`portfolio_lift_ge_${threshold}_percentage_points`] || 0);
+            const standardError = Number(prediction[`portfolio_standard_error_ge_${threshold}_percentage_points`] || 0);
+            if (optimized === undefined || random === undefined) return "";
+            const liftPrefix = lift >= 0 ? "+" : "";
+            const estimateMargin = standardError > 0
+              ? `<br>${t("estimateMargin")}: &plusmn;${(1.96 * standardError).toFixed(4)} pp`
+              : "";
+            return `
+              <div class="coverage-probability">
+                ${t("atLeastHits", { count: threshold })}
+                <strong>${optimized}%</strong>
+                ${t("optimizedPortfolio")}<br>
+                ${t("sameCountRandom")}: ${random}%<br>
+                <span class="lift">${t("liftLabel")}: ${liftPrefix}${lift.toFixed(4)} pp</span>${estimateMargin}
+              </div>
+            `;
+          })
+          .join("");
         const portfolio = portfolioLines.length > 0
           ? `
             <div class="portfolio-block">
@@ -1072,6 +1135,10 @@
                   ${t("portfolioOverlap")}
                 </div>
               </div>
+              ${coverageProbabilityCards ? `
+                <div class="meta"><strong>${t("coverageHitRates")}</strong></div>
+                <div class="coverage-probabilities">${coverageProbabilityCards}</div>
+              ` : ""}
               <div class="alternative-list">
                 ${portfolioLines.map((line, index) => `
                   <div class="alternative-row">
@@ -1082,6 +1149,7 @@
                 `).join("")}
               </div>
               <div class="portfolio-warning">
+                ${coverageProbabilityCards ? `${t("coverageEstimateNotice")}<br>` : ""}
                 ${t("portfolioMathNotice")}<br>
                 ${t("portfolioPurchaseNotice")}
               </div>

@@ -3,6 +3,10 @@ import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  evaluateCoveragePortfolio,
+  optimizeCoveragePortfolio,
+} from "./portfolio_coverage_optimizer.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const args = Object.fromEntries(
@@ -52,16 +56,21 @@ function applyTrainedOverrides(config) {
   const override = trainedModelConfig?.games?.[config.key];
   if (!override) return config;
 
+  const scoreWeights = {
+    ...config.scoreWeights,
+    ...(override.scoreWeights ?? {}),
+  };
+  if (config.key === "lotto649") {
+    scoreWeights.deepLearning = 0;
+  }
+
   return {
     ...config,
     halfLife: Number(override.halfLife ?? config.halfLife),
     minimumNonBirthdayNumbers: Number(
       override.minimumNonBirthdayNumbers ?? config.minimumNonBirthdayNumbers,
     ),
-    scoreWeights: normalizeScoreWeights({
-      ...config.scoreWeights,
-      ...(override.scoreWeights ?? {}),
-    }),
+    scoreWeights: normalizeScoreWeights(scoreWeights),
     combinationScoreWeights: normalizeCombinationScoreWeights({
       ...config.combinationScoreWeights,
       ...(override.combinationScoreWeights ?? {}),
@@ -1202,67 +1211,6 @@ function combinationCount(poolSize, pickCount) {
   return Math.round(result);
 }
 
-function portfolioDiversityScore(candidate, selected, pickCount) {
-  const selectedNumbers = new Set(selected.flatMap((line) => line.numbers));
-  const overlaps = selected.map((line) => countOverlap(candidate.numbers, line.numbers));
-  const maxOverlap = Math.max(0, ...overlaps);
-  const averageOverlap =
-    overlaps.reduce((sum, overlap) => sum + overlap, 0) / Math.max(1, overlaps.length);
-  const newNumberRate =
-    candidate.numbers.filter((number) => !selectedNumbers.has(number)).length / pickCount;
-  const maxOverlapScore = 1 - maxOverlap / pickCount;
-  const averageOverlapScore = 1 - averageOverlap / pickCount;
-
-  return 0.5 * newNumberRate + 0.3 * maxOverlapScore + 0.2 * averageOverlapScore;
-}
-
-function buildCoveragePortfolio(
-  ranked,
-  config,
-  patternProfile,
-  primaryCandidate,
-  stableCandidate,
-  requestedLineCount,
-) {
-  const targetLineCount = Math.max(1, Math.min(requestedLineCount, 20));
-  const candidates = [];
-  const seen = new Set([numberKey(primaryCandidate.numbers)]);
-
-  function addCandidate(candidate) {
-    if (!candidate) return;
-    const key = numberKey(candidate.numbers);
-    if (seen.has(key)) return;
-    seen.add(key);
-    candidates.push(candidate);
-  }
-
-  addCandidate(stableCandidate);
-  const candidateAttempts = Math.max(120, targetLineCount * 30);
-  for (let attempt = 0; attempt < candidateAttempts; attempt += 1) {
-    addCandidate(selectWeightedRandomPicks(ranked, config, patternProfile));
-  }
-
-  const selected = [primaryCandidate];
-  while (selected.length < targetLineCount && candidates.length > 0) {
-    let bestIndex = 0;
-    let bestPortfolioScore = Number.NEGATIVE_INFINITY;
-
-    for (let index = 0; index < candidates.length; index += 1) {
-      const candidate = candidates[index];
-      const diversityScore = portfolioDiversityScore(candidate, selected, config.pickCount);
-      const portfolioScore = 0.68 * candidate.combinedScore + 0.32 * diversityScore;
-      if (portfolioScore > bestPortfolioScore) {
-        bestPortfolioScore = portfolioScore;
-        bestIndex = index;
-      }
-    }
-
-    selected.push(candidates.splice(bestIndex, 1)[0]);
-  }
-
-  return selected;
-}
-
 function summarizeCoveragePortfolio(portfolio, poolSize, pickCount) {
   const uniqueNumbers = new Set(portfolio.flatMap((candidate) => candidate.numbers));
   const pairOverlaps = [];
@@ -1376,14 +1324,31 @@ function predictionForGame(rows, config, predictionGeneratedAt, previousPredicti
   const primarySelection = selectPrimaryCandidate(ranked, config, patternProfile, previousPrediction);
   const selectedCandidate = primarySelection.candidate;
   const picks = selectedCandidate.numbers;
-  const coveragePortfolio = buildCoveragePortfolio(
-    ranked,
-    config,
-    patternProfile,
-    selectedCandidate,
-    primarySelection.stableCandidate,
-    portfolioLineCount,
-  );
+  const rankedLookup = createRankLookup(ranked);
+  const portfolioSeed = `${config.key}:${predictionDate}:${portfolioLineCount}`;
+  const portfolioOptimization = optimizeCoveragePortfolio({
+    primaryCandidate: selectedCandidate,
+    stableCandidate: primarySelection.stableCandidate,
+    requestedLineCount: portfolioLineCount,
+    poolSize,
+    pickCount: config.pickCount,
+    minimumNonBirthdayNumbers: config.minimumNonBirthdayNumbers,
+    scoreNumbers: (numbers) => scoreCandidate(
+      numbers,
+      rankedLookup,
+      patternProfile,
+      config,
+    ),
+    generateWeightedCandidate: () => selectWeightedRandomPicks(ranked, config, patternProfile),
+    seed: portfolioSeed,
+  });
+  const coveragePortfolio = portfolioOptimization.portfolio;
+  const coverageEvaluation = evaluateCoveragePortfolio({
+    portfolio: coveragePortfolio,
+    poolSize,
+    pickCount: config.pickCount,
+    seed: portfolioSeed,
+  });
   const portfolioSummary = summarizeCoveragePortfolio(
     coveragePortfolio,
     poolSize,
@@ -1417,7 +1382,9 @@ function predictionForGame(rows, config, predictionGeneratedAt, previousPredicti
       ? "composite_weighted_v3_pattern_profile_trained"
       : "composite_weighted_v3_pattern_profile"),
     trained_config_generated_at: config.trainedConfigGeneratedAt ?? "",
-    deep_learning_device: config.deepLearning?.device ?? "",
+    deep_learning_device: config.key === "lotto649"
+      ? "disabled_for_649_prediction"
+      : config.deepLearning?.device ?? "",
     deep_learning_validation: config.deepLearning?.validation
       ? `avg_hits=${config.deepLearning.validation.avg_hits_per_draw};rate>=3=${config.deepLearning.validation.rate_at_least_3}`
       : "",
@@ -1435,7 +1402,12 @@ function predictionForGame(rows, config, predictionGeneratedAt, previousPredicti
     crowd_avoidance_score: selectedCandidate.crowdAvoidanceScore.toFixed(4),
     pattern_profile: formatPatternProfile(selectedCandidate, patternProfile),
     picks: picks.join("-"),
-    portfolio_strategy: "distinct_low_overlap_weighted",
+    portfolio_strategy: portfolioOptimization.optimization.method,
+    portfolio_optimizer_candidate_count: portfolioOptimization.optimization.candidateCount,
+    portfolio_optimizer_training_samples:
+      portfolioOptimization.optimization.trainingSampleCount,
+    portfolio_evaluation_method: coverageEvaluation.method,
+    portfolio_evaluation_samples: coverageEvaluation.evaluationSampleCount,
     portfolio_line_count: portfolioSummary.lineCount,
     portfolio_lines: coveragePortfolio
       .map((candidate) => candidate.numbers.join("-"))
@@ -1448,6 +1420,18 @@ function predictionForGame(rows, config, predictionGeneratedAt, previousPredicti
     portfolio_unique_numbers: portfolioSummary.uniqueNumberCount,
     portfolio_max_pair_overlap: portfolioSummary.maxPairOverlap,
     portfolio_average_pair_overlap: portfolioSummary.averagePairOverlap.toFixed(2),
+    ...Object.fromEntries(
+      [2, 3, 4].flatMap((threshold) => {
+        const metric = coverageEvaluation.metrics[threshold];
+        return [
+          [`portfolio_hit_probability_ge_${threshold}_percent`, (metric.estimatedProbability * 100).toFixed(4)],
+          [`portfolio_random_baseline_ge_${threshold}_percent`, (metric.randomBaseline * 100).toFixed(4)],
+          [`portfolio_lift_ge_${threshold}_percentage_points`, metric.liftPercentagePoints.toFixed(4)],
+          [`portfolio_relative_lift_ge_${threshold}_percent`, metric.relativeLiftPercent.toFixed(2)],
+          [`portfolio_standard_error_ge_${threshold}_percentage_points`, metric.standardErrorPercentagePoints.toFixed(4)],
+        ];
+      }),
+    ),
     weighted_random_alternatives: weightedRandomAlternatives
       .map((alternative) => alternative.numbers.join("-"))
       .join(";"),
@@ -1552,6 +1536,10 @@ const predictionColumns = [
   "pattern_profile",
   "picks",
   "portfolio_strategy",
+  "portfolio_optimizer_candidate_count",
+  "portfolio_optimizer_training_samples",
+  "portfolio_evaluation_method",
+  "portfolio_evaluation_samples",
   "portfolio_line_count",
   "portfolio_lines",
   "portfolio_total_combinations",
@@ -1561,6 +1549,21 @@ const predictionColumns = [
   "portfolio_unique_numbers",
   "portfolio_max_pair_overlap",
   "portfolio_average_pair_overlap",
+  "portfolio_hit_probability_ge_2_percent",
+  "portfolio_random_baseline_ge_2_percent",
+  "portfolio_lift_ge_2_percentage_points",
+  "portfolio_relative_lift_ge_2_percent",
+  "portfolio_standard_error_ge_2_percentage_points",
+  "portfolio_hit_probability_ge_3_percent",
+  "portfolio_random_baseline_ge_3_percent",
+  "portfolio_lift_ge_3_percentage_points",
+  "portfolio_relative_lift_ge_3_percent",
+  "portfolio_standard_error_ge_3_percentage_points",
+  "portfolio_hit_probability_ge_4_percent",
+  "portfolio_random_baseline_ge_4_percent",
+  "portfolio_lift_ge_4_percentage_points",
+  "portfolio_relative_lift_ge_4_percent",
+  "portfolio_standard_error_ge_4_percentage_points",
   "weighted_random_alternatives",
   "top_12_weighted_numbers",
 ];

@@ -103,12 +103,12 @@ The current prediction model is `composite_weighted_v3_pattern_profile`. It comb
 - Recent burst: the latest 5 draws count strongest, the latest 10 count moderately, and the latest 20 still count lightly. This is the experimental layer for testing whether very recent draw-machine behavior has any detectable signal.
 - Long-term hotness: numbers with historically above-expected frequency receive extra score.
 - Cold-number rebound: numbers absent for longer periods receive a mild recovery score.
-- Deep-learning probability: when `trained_model_config.json` was produced by `train_deep_lottery_model.py`, each number receives a PyTorch neural-network probability trained on rolling historical windows.
+- Deep-learning probability: when `trained_model_config.json` was produced by `train_deep_lottery_model.py`, each number receives a PyTorch neural-network probability trained on rolling historical windows. Lotto 6/49 keeps this output for diagnostics but gives it zero live-prediction weight because its independent holdout result did not beat random.
 - Birthday-number avoidance: each pick keeps at least two `32+` numbers to reduce overlap with common birthday-based tickets.
 - Pattern profile scoring: combinations are scored against historical odd/even balance, low/high balance, sum range, consecutive pairs, same-tail concentration, and repeat count from the latest draw.
 - Crowd split avoidance: combinations with fewer date-heavy, low-month, round-number, and obvious-pattern traits receive a small extra score. This does not change draw odds, but it can reduce the risk of sharing a prize with common human-picked tickets.
 
-Default trained model weights:
+Default Lotto Max trained model weights:
 
 ```text
 recent_activity=0.24
@@ -118,6 +118,8 @@ cold_rebound=0.15
 deep_learning=0.33
 ```
 
+For Lotto 6/49, `deep_learning=0`. The remaining four components are normalized automatically.
+
 The UI shows one primary recommendation plus five weighted alternatives. By default the primary recommendation uses weighted exploration from high-scoring model candidates, so it can change between recalculations while still staying inside the model's preferred range. Use deterministic mode when you want the exact stable best-scoring combination:
 
 ```powershell
@@ -125,12 +127,18 @@ node .\refresh_and_predict.mjs --primaryPickMode=stable
 ```
 
 Coverage portfolio mode can generate 1, 4, 8, or 12 distinct lines. It keeps the
-primary recommendation as line 1, then balances model score with new-number
-coverage and low overlap between lines. The UI reports exact jackpot coverage
-odds and audits every portfolio line after a new draw. The odds multiplier only
-applies when every displayed line is actually purchased. Low overlap does not
-change jackpot odds beyond keeping the lines distinct; it diversifies the
-portfolio's number coverage.
+primary recommendation as line 1, then uses a Monte Carlo set-coverage optimizer
+to select the remaining lines for the events `at least 2`, `at least 3`, and
+`at least 4` matches. Candidate selection and evaluation use separate seeded
+draw samples to reduce optimizer overfitting. The UI compares the optimized
+portfolio with an exact same-line-count uniform-random baseline and reports the
+estimated lift in percentage points.
+
+The UI also reports exact jackpot coverage odds and audits every portfolio line
+after a new draw. The jackpot multiplier only applies when every displayed line
+is actually purchased. Portfolio optimization changes the probability of at
+least one partial match by changing dependence between lines; it does not make
+an individual line more likely and does not create a proven draw-prediction edge.
 
 The command-line default is four lines and can be changed up to 20:
 
